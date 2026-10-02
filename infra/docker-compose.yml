@@ -44,3 +44,15 @@ services:
       - "8082:8082"
     depends_on:
       - token-service
+
+  payment-receiver:
+    build:
+      context: ..
+      args:
+        MODULE: payment-receiver
+    environment:
+      TOKEN_SERVICE_URL: http://token-service:8083
+    ports:
+      - "8084:8084"
+    depends_on:
+      - token-service

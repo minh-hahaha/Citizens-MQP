@@ -63,6 +63,13 @@ public class TokenRepository {
                 .optional();
     }
 
+    public void markUsed(UUID tokenId, Instant usedAt) {
+        jdbc.sql("UPDATE account_token SET last_used_at = :usedAt WHERE token_id = :tokenId")
+                .param("usedAt", OffsetDateTime.ofInstant(usedAt, ZoneOffset.UTC))
+                .param("tokenId", tokenId)
+                .update();
+    }
+
     private static AccountToken mapRow(ResultSet rs, int rowNum) throws SQLException {
         return new AccountToken(
                 rs.getObject("token_id", UUID.class),

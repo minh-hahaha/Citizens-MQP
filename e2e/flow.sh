@@ -4,6 +4,7 @@
 set -euo pipefail
 
 API_URL="${API_URL:-http://localhost:8082}"
+PAYMENTS_URL="${PAYMENTS_URL:-http://localhost:8084}"
 ACCOUNT_ID="${ACCOUNT_ID:-acc-1001}"
 FAKE_ACCOUNT_NUMBER="000111224321"
 WAIT_SECONDS=90
@@ -33,8 +34,19 @@ fdx_get() {
   [ "$ECHOED_ID" = "$interaction_id" ] || fail "x-fapi-interaction-id not echoed on $path"
 }
 
+# Sends a payment to routing number + account identifier. Sets BODY and STATUS.
+pay() {
+  local routing="$1" identifier="$2" out
+  out="$(curl -s -w '\n%{http_code}' -H 'Content-Type: application/json' \
+    -d "{\"routingNumber\": \"$routing\", \"accountIdentifier\": \"$identifier\", \"amount\": 25.00}" \
+    "$PAYMENTS_URL/v1/payments")"
+  STATUS="$(echo "$out" | tail -n 1)"
+  BODY="$(echo "$out" | sed '$d')"
+}
+
 echo "Waiting for services"
 wait_for "open-banking-api" "$API_URL/actuator/health"
+wait_for "payment-receiver" "$PAYMENTS_URL/actuator/health"
 
 echo "Flow step 2: the aggregator lists the customer's accounts"
 fdx_get "/fdx/v6/accounts"
@@ -63,5 +75,19 @@ fdx_get "/fdx/v6/accounts/does-not-exist/payment-networks"
 [ "$STATUS" = "404" ] && [ "$(echo "$BODY" | jq -r '.code')" = "701" ] \
   || fail "unknown account did not return FDX error 701"
 pass "unknown account returns FDX error 701"
+
+echo "Flow step 4: a payment to the token succeeds"
+pay "$ROUTING" "$TOKEN"
+[ "$STATUS" = "201" ] && [ "$(echo "$BODY" | jq -r '.status')" = "POSTED" ] \
+  || fail "payment to the token was not posted (HTTP $STATUS)"
+PAYMENT_ID="$(echo "$BODY" | jq -r '.paymentId')"
+curl -s "$PAYMENTS_URL/v1/ledger" | jq -e --arg id "$PAYMENT_ID" '.[] | select(.paymentId == $id)' > /dev/null \
+  || fail "payment $PAYMENT_ID is not in the ledger"
+pass "payment posted to the ledger"
+
+pay "$ROUTING" "999999999999"
+[ "$STATUS" = "422" ] && [ "$(echo "$BODY" | jq -r '.status')" = "REJECTED" ] \
+  || fail "payment to a made-up token was not rejected (HTTP $STATUS)"
+pass "payment to a made-up token is rejected"
 
 echo "All checks passed"

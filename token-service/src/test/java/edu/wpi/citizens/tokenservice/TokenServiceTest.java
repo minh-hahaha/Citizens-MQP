@@ -24,9 +24,12 @@ class TokenServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-02T12:00:00Z");
     private static final TokenLink LINK = new TokenLink(UUID.randomUUID(), "aggregator-ui", "consent-1");
 
+    private static final RequestContext CONTEXT = new RequestContext("test", "request-1");
+
     private final TokenRepository repository = mock(TokenRepository.class);
+    private final AuditRepository audit = mock(AuditRepository.class);
     private final TokenGenerator generator = mock(TokenGenerator.class);
-    private final TokenService service = new TokenService(repository, generator,
+    private final TokenService service = new TokenService(repository, audit, generator,
             new TokenProperties("123456780", 365), Clock.fixed(NOW, ZoneOffset.UTC));
 
     @Test
@@ -34,7 +37,7 @@ class TokenServiceTest {
         AccountToken existing = token("482910375526");
         when(repository.findActive(LINK)).thenReturn(Optional.of(existing));
 
-        AccountToken result = service.issue(LINK);
+        AccountToken result = service.issue(LINK, CONTEXT);
 
         assertThat(result).isEqualTo(existing);
         verify(repository, never()).insert(any(), any(), any(), any());
@@ -49,7 +52,7 @@ class TokenServiceTest {
                 .thenThrow(new DuplicateKeyException("uq_token_value"));
         when(repository.insert(eq("222222222222"), any(), any(), any())).thenReturn(created);
 
-        AccountToken result = service.issue(LINK);
+        AccountToken result = service.issue(LINK, CONTEXT);
 
         assertThat(result).isEqualTo(created);
     }
@@ -62,7 +65,7 @@ class TokenServiceTest {
         when(repository.insert(any(), any(), any(), any()))
                 .thenThrow(new DuplicateKeyException("uq_active_token_per_link"));
 
-        AccountToken result = service.issue(LINK);
+        AccountToken result = service.issue(LINK, CONTEXT);
 
         assertThat(result).isEqualTo(winner);
     }
@@ -74,7 +77,7 @@ class TokenServiceTest {
         when(repository.insert(any(), any(), any(), any()))
                 .thenThrow(new DuplicateKeyException("uq_token_value"));
 
-        assertThatThrownBy(() -> service.issue(LINK)).isInstanceOf(TokenIssueException.class);
+        assertThatThrownBy(() -> service.issue(LINK, CONTEXT)).isInstanceOf(TokenIssueException.class);
         verify(repository, times(TokenService.MAX_ISSUE_ATTEMPTS)).insert(any(), any(), any(), any());
     }
 
