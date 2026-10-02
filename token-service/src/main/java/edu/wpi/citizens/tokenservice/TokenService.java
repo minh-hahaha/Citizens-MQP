@@ -3,6 +3,7 @@ package edu.wpi.citizens.tokenservice;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -88,6 +89,41 @@ public class TokenService {
         repository.markUsed(tokenId, clock.instant());
         audit.insert(tokenId, Event.DETOKENIZE, context, Outcome.ALLOWED);
         return found.map(AccountToken::accountRef);
+    }
+
+    public Optional<AccountToken> find(UUID tokenId) {
+        return repository.findById(tokenId);
+    }
+
+    /** Revokes one token. Returns empty if there is no such token. Safe to repeat. */
+    @Transactional
+    public Optional<AccountToken> revoke(UUID tokenId, String reason, RequestContext context) {
+        if (repository.findById(tokenId).isEmpty()) {
+            audit.insert(null, Event.REVOKE, context, Outcome.DENIED);
+            return Optional.empty();
+        }
+        if (repository.revoke(tokenId, reason, clock.instant())) {
+            audit.insert(tokenId, Event.REVOKE, context, Outcome.ALLOWED);
+            log.info("revoked token_id={} reason={}", tokenId, reason);
+        }
+        return repository.findById(tokenId);
+    }
+
+    /** Revokes every token issued under a consent. Returns how many were revoked by this call. */
+    @Transactional
+    public int revokeByConsent(String consentId, String reason, RequestContext context) {
+        List<UUID> revoked = repository.revokeByConsent(consentId, reason, clock.instant());
+        revoked.forEach(tokenId -> audit.insert(tokenId, Event.REVOKE, context, Outcome.ALLOWED));
+        log.info("revoked {} token(s) for consent_id={} reason={}", revoked.size(), consentId, reason);
+        return revoked.size();
+    }
+
+    /** Flips ACTIVE tokens past their expiry to EXPIRED. Returns how many were flipped. */
+    @Transactional
+    public int expireDue(RequestContext context) {
+        List<UUID> expired = repository.expireDue(clock.instant());
+        expired.forEach(tokenId -> audit.insert(tokenId, Event.EXPIRE, context, Outcome.ALLOWED));
+        return expired.size();
     }
 
     /** The reason is for the service log only. It is never returned to the caller. */

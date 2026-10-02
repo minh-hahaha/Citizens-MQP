@@ -10,6 +10,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -57,5 +59,34 @@ public class TokenController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(DENIED);
         }
         return ResponseEntity.ok(new DetokenizeResponse(accountRef.get()));
+    }
+
+    @PostMapping("/{tokenId}/revoke")
+    public ResponseEntity<TokenMetadata> revoke(
+            @PathVariable UUID tokenId,
+            @Valid @RequestBody RevokeRequest request,
+            @RequestHeader(value = RequestContext.ACTOR_HEADER, required = false) String actor,
+            @RequestHeader(value = RequestContext.REQUEST_ID_HEADER, required = false) String requestId) {
+        RequestContext context = RequestContext.fromHeaders(actor, requestId);
+        return tokenService.revoke(tokenId, request.reason(), context)
+                .map(token -> ResponseEntity.ok(TokenMetadata.from(token)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/revoke-by-consent")
+    public Map<String, Integer> revokeByConsent(
+            @Valid @RequestBody RevokeByConsentRequest request,
+            @RequestHeader(value = RequestContext.ACTOR_HEADER, required = false) String actor,
+            @RequestHeader(value = RequestContext.REQUEST_ID_HEADER, required = false) String requestId) {
+        RequestContext context = RequestContext.fromHeaders(actor, requestId);
+        return Map.of("revokedCount", tokenService.revokeByConsent(request.consentId(), request.reason(), context));
+    }
+
+    /** Status and metadata only. Never the full token value and never an account number. */
+    @GetMapping("/{tokenId}")
+    public ResponseEntity<TokenMetadata> get(@PathVariable UUID tokenId) {
+        return tokenService.find(tokenId)
+                .map(token -> ResponseEntity.ok(TokenMetadata.from(token)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }

@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -61,6 +62,54 @@ public class TokenRepository {
                 .param("tokenValue", tokenValue)
                 .query(ROW_MAPPER)
                 .optional();
+    }
+
+    public Optional<AccountToken> findById(UUID tokenId) {
+        return jdbc.sql("SELECT * FROM account_token WHERE token_id = :tokenId")
+                .param("tokenId", tokenId)
+                .query(ROW_MAPPER)
+                .optional();
+    }
+
+    /** Revokes the token if it is not already revoked. Returns true if this call changed it. */
+    public boolean revoke(UUID tokenId, String reason, Instant revokedAt) {
+        return jdbc.sql("""
+                        UPDATE account_token
+                        SET status = 'REVOKED', revoked_at = :revokedAt, revoke_reason = :reason
+                        WHERE token_id = :tokenId AND status <> 'REVOKED'
+                        """)
+                .param("revokedAt", OffsetDateTime.ofInstant(revokedAt, ZoneOffset.UTC))
+                .param("reason", reason)
+                .param("tokenId", tokenId)
+                .update() > 0;
+    }
+
+    /** Revokes every token under a consent. Returns the IDs of the tokens this call changed. */
+    public List<UUID> revokeByConsent(String consentId, String reason, Instant revokedAt) {
+        return jdbc.sql("""
+                        UPDATE account_token
+                        SET status = 'REVOKED', revoked_at = :revokedAt, revoke_reason = :reason
+                        WHERE consent_id = :consentId AND status <> 'REVOKED'
+                        RETURNING token_id
+                        """)
+                .param("revokedAt", OffsetDateTime.ofInstant(revokedAt, ZoneOffset.UTC))
+                .param("reason", reason)
+                .param("consentId", consentId)
+                .query(UUID.class)
+                .list();
+    }
+
+    /** Flips ACTIVE tokens past their expiry to EXPIRED. Returns the IDs that were flipped. */
+    public List<UUID> expireDue(Instant now) {
+        return jdbc.sql("""
+                        UPDATE account_token
+                        SET status = 'EXPIRED'
+                        WHERE status = 'ACTIVE' AND expires_at <= :now
+                        RETURNING token_id
+                        """)
+                .param("now", OffsetDateTime.ofInstant(now, ZoneOffset.UTC))
+                .query(UUID.class)
+                .list();
     }
 
     public void markUsed(UUID tokenId, Instant usedAt) {

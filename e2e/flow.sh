@@ -5,6 +5,8 @@ set -euo pipefail
 
 API_URL="${API_URL:-http://localhost:8082}"
 PAYMENTS_URL="${PAYMENTS_URL:-http://localhost:8084}"
+TOKEN_SERVICE_URL="${TOKEN_SERVICE_URL:-http://localhost:8083}"
+COMPOSE_FILE="$(cd "$(dirname "$0")/.." && pwd)/infra/docker-compose.yml"
 ACCOUNT_ID="${ACCOUNT_ID:-acc-1001}"
 FAKE_ACCOUNT_NUMBER="000111224321"
 WAIT_SECONDS=90
@@ -89,5 +91,24 @@ pay "$ROUTING" "999999999999"
 [ "$STATUS" = "422" ] && [ "$(echo "$BODY" | jq -r '.status')" = "REJECTED" ] \
   || fail "payment to a made-up token was not rejected (HTTP $STATUS)"
 pass "payment to a made-up token is rejected"
+
+echo "Flow step 5: the token is revoked (by hand for now, standing in for consent revocation)"
+TOKEN_ID="$(docker compose -f "$COMPOSE_FILE" exec -T postgres \
+  psql -U vault -d vault -At -c "SELECT token_id FROM account_token WHERE token_value = '$TOKEN'")"
+[ -n "$TOKEN_ID" ] || fail "could not look up the token id"
+REVOKED_STATUS="$(curl -s -H 'Content-Type: application/json' -H 'x-actor: e2e-script' \
+  -d '{"reason": "CONSENT_REVOKED"}' "$TOKEN_SERVICE_URL/v1/tokens/$TOKEN_ID/revoke" | jq -r '.status')"
+[ "$REVOKED_STATUS" = "REVOKED" ] || fail "token was not revoked (status $REVOKED_STATUS)"
+pass "token $TOKEN_ID revoked"
+
+echo "Flow step 6: the same payment now fails"
+pay "$ROUTING" "$TOKEN"
+[ "$STATUS" = "422" ] && [ "$(echo "$BODY" | jq -r '.status')" = "REJECTED" ] \
+  || fail "payment to a revoked token was not rejected (HTTP $STATUS)"
+REVOKED_REASON="$(echo "$BODY" | jq -r '.reason')"
+pay "$ROUTING" "999999999999"
+[ "$(echo "$BODY" | jq -r '.reason')" = "$REVOKED_REASON" ] \
+  || fail "a revoked token and a made-up token are rejected with different reasons"
+pass "payment to the revoked token is rejected, same as for a made-up token"
 
 echo "All checks passed"
