@@ -37,19 +37,29 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "consentRequired": true,
-      "redirectUris": ["http://localhost:5173/*"],
-      "webOrigins": ["http://localhost:5173"],
+      "redirectUris": [
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256"
       },
       "defaultClientScopes": [],
-      "optionalClientScopes": ["fdx:accountbasic:read", "fdx:paymentsupport:read"],
+      "optionalClientScopes": [
+        "fdx:accountbasic:read",
+        "fdx:paymentsupport:read"
+      ],
       "protocolMappers": [
         {
           "name": "sub",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-sub-mapper",
-          "config": { "access.token.claim": "true", "introspection.token.claim": "true" }
+          "config": {
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
         },
         {
           "name": "username",
@@ -64,6 +74,32 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "open-banking-api",
+      "name": "Open Banking API",
+      "description": "Service account the Open Banking API uses to check which consents still exist",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "dev-only-open-banking-api-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "defaultClientScopes": [],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "client roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "config": {
+            "claim.name": "resource_access.${client_id}.roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -74,7 +110,13 @@
       "firstName": "Alice",
       "lastName": "Example",
       "email": "alice@example.test",
-      "credentials": [{ "type": "password", "value": "password", "temporary": false }]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
     },
     {
       "username": "bob",
@@ -83,7 +125,13 @@
       "firstName": "Bob",
       "lastName": "Example",
       "email": "bob@example.test",
-      "credentials": [{ "type": "password", "value": "password", "temporary": false }]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
     },
     {
       "username": "carol",
@@ -92,7 +140,23 @@
       "firstName": "Carol",
       "lastName": "Example",
       "email": "carol@example.test",
-      "credentials": [{ "type": "password", "value": "password", "temporary": false }]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "service-account-open-banking-api",
+      "enabled": true,
+      "serviceAccountClientId": "open-banking-api",
+      "clientRoles": {
+        "realm-management": [
+          "view-users"
+        ]
+      }
     }
   ]
 }

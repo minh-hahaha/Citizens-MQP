@@ -7,8 +7,10 @@ API_URL="${API_URL:-http://localhost:8081}"
 export KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8080}"
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 PAYMENTS_URL="${PAYMENTS_URL:-http://localhost:8084}"
-TOKEN_SERVICE_URL="${TOKEN_SERVICE_URL:-http://localhost:8083}"
-COMPOSE_FILE="$E2E_DIR/../infra/docker-compose.yml"
+# DEV-ONLY Keycloak admin login, from infra/docker-compose.yml.
+KEYCLOAK_ADMIN_USER="${KEYCLOAK_ADMIN_USER:-admin}"
+KEYCLOAK_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-dev-only-admin-password}"
+REVOCATION_TIMEOUT_SECONDS=30
 ACCOUNT_ID="${ACCOUNT_ID:-acc-1001}"
 FAKE_ACCOUNT_NUMBER="000111224321"
 WAIT_SECONDS=90
@@ -121,23 +123,49 @@ pay "$ROUTING" "999999999999"
   || fail "payment to a made-up token was not rejected (HTTP $STATUS)"
 pass "payment to a made-up token is rejected"
 
-echo "Flow step 5: the token is revoked (by hand for now, standing in for consent revocation)"
-TOKEN_ID="$(docker compose -f "$COMPOSE_FILE" exec -T postgres \
-  psql -U vault -d vault -At -c "SELECT token_id FROM account_token WHERE token_value = '$TOKEN'")"
-[ -n "$TOKEN_ID" ] || fail "could not look up the token id"
-REVOKED_STATUS="$(curl -s -H 'Content-Type: application/json' -H 'x-actor: e2e-script' \
-  -d '{"reason": "CONSENT_REVOKED"}' "$TOKEN_SERVICE_URL/v1/tokens/$TOKEN_ID/revoke" | jq -r '.status')"
-[ "$REVOKED_STATUS" = "REVOKED" ] || fail "token was not revoked (status $REVOKED_STATUS)"
-pass "token $TOKEN_ID revoked"
+echo "Flow step 5: the customer revokes consent at the bank"
+ADMIN_TOKEN="$(curl -s "$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" \
+  -d grant_type=password -d client_id=admin-cli \
+  -d "username=$KEYCLOAK_ADMIN_USER" -d "password=$KEYCLOAK_ADMIN_PASSWORD" | jq -r '.access_token')"
+USER_ID="$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "$KEYCLOAK_URL/admin/realms/citizens/users?username=alice&exact=true" | jq -r '.[0].id')"
+# The same call Keycloak's account console makes when a customer removes an application's access.
+REVOKE_STATUS="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "$KEYCLOAK_URL/admin/realms/citizens/users/$USER_ID/consents/aggregator-ui")"
+[ "$REVOKE_STATUS" = "204" ] || fail "could not revoke alice's consent in Keycloak (HTTP $REVOKE_STATUS)"
+REVOKED_AT="$(date +%s)"
+pass "alice's consent for the aggregator is revoked in Keycloak"
 
 echo "Flow step 6: the same payment now fails"
-pay "$ROUTING" "$TOKEN"
-[ "$STATUS" = "422" ] && [ "$(echo "$BODY" | jq -r '.status')" = "REJECTED" ] \
-  || fail "payment to a revoked token was not rejected (HTTP $STATUS)"
+DELAY=""
+for _ in $(seq "$REVOCATION_TIMEOUT_SECONDS"); do
+  pay "$ROUTING" "$TOKEN"
+  if [ "$STATUS" = "422" ]; then DELAY="$(( $(date +%s) - REVOKED_AT ))"; break; fi
+  sleep 1
+done
+[ -n "$DELAY" ] || fail "payment to the token still succeeds ${REVOCATION_TIMEOUT_SECONDS}s after consent was revoked"
 REVOKED_REASON="$(echo "$BODY" | jq -r '.reason')"
+pass "payment to the token is rejected, about ${DELAY}s after consent was revoked"
+
 pay "$ROUTING" "999999999999"
 [ "$(echo "$BODY" | jq -r '.reason')" = "$REVOKED_REASON" ] \
   || fail "a revoked token and a made-up token are rejected with different reasons"
-pass "payment to the revoked token is rejected, same as for a made-up token"
+pass "the rejection looks the same as for a made-up token"
+
+fdx_get "/fdx/v6/accounts/$ACCOUNT_ID/payment-networks"
+[ "$STATUS" = "403" ] && [ "$(echo "$BODY" | jq -r '.code')" = "602" ] \
+  || fail "the old access token could still get a token after revocation (HTTP $STATUS)"
+pass "the old access token can no longer get a token (FDX error 602)"
+
+echo "Afterwards: the customer links the account again"
+ACCESS_TOKEN="$("$E2E_DIR/login.sh" alice password)"
+fdx_get "/fdx/v6/accounts/$ACCOUNT_ID/payment-networks"
+NEW_TOKEN="$(echo "$BODY" | jq -r '.paymentNetworks[0].identifier')"
+[ "$STATUS" = "200" ] && [ "$NEW_TOKEN" != "$TOKEN" ] || fail "re-linking did not produce a new token"
+pay "$ROUTING" "$NEW_TOKEN"
+[ "$STATUS" = "201" ] || fail "payment to the new token was not posted (HTTP $STATUS)"
+pay "$ROUTING" "$TOKEN"
+[ "$STATUS" = "422" ] || fail "the old token works again after re-linking"
+pass "a new consent gets a new token, and the old token stays dead"
 
 echo "All checks passed"

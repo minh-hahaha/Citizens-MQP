@@ -28,11 +28,11 @@ public class AccountsController {
     private static final String PAYMENT_NETWORK = "US_ACH";
 
     private final FakeAccountRepository accounts;
-    private final ConsentRegistry consents;
+    private final ConsentService consents;
     private final TokenServiceClient tokenService;
     private final CallerResolver callerResolver;
 
-    public AccountsController(FakeAccountRepository accounts, ConsentRegistry consents,
+    public AccountsController(FakeAccountRepository accounts, ConsentService consents,
                               TokenServiceClient tokenService, CallerResolver callerResolver) {
         this.accounts = accounts;
         this.consents = consents;

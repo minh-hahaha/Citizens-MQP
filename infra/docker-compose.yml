@@ -27,8 +27,8 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/vault
       DB_USER: vault
       DB_PASSWORD: dev-only-vault-password
-    ports:
-      - "8083:8083"
+    # No host port: the Token Service has no login of its own, so it is reachable
+    # only from the other services on the Compose network.
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,6 +42,10 @@ services:
       TOKEN_SERVICE_URL: http://token-service:8083
       KEYCLOAK_ISSUER: http://localhost:8080/realms/citizens
       KEYCLOAK_JWKS: http://keycloak:8080/realms/citizens/protocol/openid-connect/certs
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_CLIENT_SECRET: dev-only-open-banking-api-secret
+      # How often revoked consents are picked up. This is the revocation delay.
+      RECONCILE_INTERVAL_MS: 5000
     # No host port: the Open Banking API is reached only through the gateway.
     depends_on:
       - token-service

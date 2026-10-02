@@ -14,10 +14,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.UUID;
 
 import edu.wpi.citizens.openbanking.TokenServiceClient.IssuedToken;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -29,7 +31,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.web.client.ResourceAccessException;
 
-@SpringBootTest
+@SpringBootTest(properties = "openbanking.reconcile-interval-ms=3600000")
 @AutoConfigureMockMvc
 class AccountsControllerTest {
 
@@ -41,6 +43,14 @@ class AccountsControllerTest {
 
     @MockitoBean
     private TokenServiceClient tokenService;
+
+    @MockitoBean
+    private KeycloakConsentClient keycloak;
+
+    @BeforeEach
+    void customersHaveConsented() {
+        when(keycloak.grantCreatedAt(any(), eq("aggregator-ui"))).thenReturn(Optional.of(100L));
+    }
 
     @Test
     void listsOnlyTheCallersAccountsAsFdxAccountDescriptors() throws Exception {
@@ -162,13 +172,24 @@ class AccountsControllerTest {
                 .andExpect(jsonPath("$.code").value("602"));
     }
 
+    @Test
+    void paymentNetworksIsRefusedWhenKeycloakHasNoGrantForTheCustomer() throws Exception {
+        when(keycloak.grantCreatedAt(any(), any())).thenReturn(Optional.empty());
+
+        mvc.perform(get("/fdx/v6/accounts/acc-1002/payment-networks").header(HEADER, INTERACTION_ID)
+                        .with(customer("alice", "fdx:paymentsupport:read")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("602"));
+    }
+
     private static RequestPostProcessor alice() {
         return customer("alice", "fdx:accountbasic:read", "fdx:paymentsupport:read");
     }
 
     private static RequestPostProcessor customer(String username, String... scopes) {
         return jwt()
-                .jwt(token -> token.claim("preferred_username", username).claim("azp", "aggregator-ui"))
+                .jwt(token -> token.subject("id-of-" + username)
+                        .claim("preferred_username", username).claim("azp", "aggregator-ui"))
                 .authorities(Arrays.stream(scopes)
                         .map(scope -> new SimpleGrantedAuthority("SCOPE_" + scope))
                         .toArray(GrantedAuthority[]::new));

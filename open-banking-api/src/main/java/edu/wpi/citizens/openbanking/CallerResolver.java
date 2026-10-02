@@ -12,11 +12,16 @@ public class CallerResolver {
     private static final String CLIENT_ID_CLAIM = "azp";
 
     public Caller resolve(Jwt accessToken) {
+        String userId = accessToken.getSubject();
         String username = accessToken.getClaimAsString(USERNAME_CLAIM);
         String clientId = accessToken.getClaimAsString(CLIENT_ID_CLAIM);
-        if (username == null || username.isBlank() || clientId == null || clientId.isBlank()) {
+        if (isBlank(userId) || isBlank(username) || isBlank(clientId)) {
             throw new AccessDeniedException("Access token does not identify a customer and a client");
         }
-        return new Caller(username, clientId);
+        return new Caller(userId, username, clientId);
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

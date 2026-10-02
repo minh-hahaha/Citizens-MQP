@@ -1,25 +1,37 @@
 package edu.wpi.citizens.openbanking;
 
+import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Component;
 
-/**
- * Remembers the consentId for each (customer, aggregator, account) link.
- * A consentId is created the first time a link is seen. Kept in memory.
- */
+/** In-memory record of the active consent links. Lost on restart. */
 @Component
 public class ConsentRegistry {
 
-    private record LinkKey(String username, String clientId, String accountId) {
+    private record LinkKey(String userId, String clientId, String accountId) {
     }
 
-    private final Map<LinkKey, String> consentIds = new ConcurrentHashMap<>();
+    private final Map<LinkKey, ConsentLink> links = new ConcurrentHashMap<>();
 
-    public String consentIdFor(Caller caller, String accountId) {
-        LinkKey key = new LinkKey(caller.username(), caller.clientId(), accountId);
-        return consentIds.computeIfAbsent(key, k -> "consent-" + UUID.randomUUID());
+    public Optional<ConsentLink> find(String userId, String clientId, String accountId) {
+        return Optional.ofNullable(links.get(new LinkKey(userId, clientId, accountId)));
+    }
+
+    /** Stores the link unless one already exists for the same key. Returns the stored link. */
+    public ConsentLink register(ConsentLink link) {
+        LinkKey key = new LinkKey(link.userId(), link.clientId(), link.accountId());
+        ConsentLink existing = links.putIfAbsent(key, link);
+        return existing != null ? existing : link;
+    }
+
+    public List<ConsentLink> all() {
+        return List.copyOf(links.values());
+    }
+
+    public void remove(ConsentLink link) {
+        links.remove(new LinkKey(link.userId(), link.clientId(), link.accountId()), link);
     }
 }
