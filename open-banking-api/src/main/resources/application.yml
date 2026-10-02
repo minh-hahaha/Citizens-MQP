@@ -4,10 +4,14 @@ server:
 spring:
   application:
     name: open-banking-api
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # The issuer is the address the browser uses. The keys may be fetched from a
+          # different address (the Compose service name) and that is fine.
+          issuer-uri: ${KEYCLOAK_ISSUER:http://localhost:8080/realms/citizens}
+          jwk-set-uri: ${KEYCLOAK_JWKS:http://localhost:8080/realms/citizens/protocol/openid-connect/certs}
 
 openbanking:
   token-service-url: ${TOKEN_SERVICE_URL:http://localhost:8083}
-  # Until login is wired in, every call is treated as this customer and this aggregator.
-  demo-caller:
-    username: alice
-    client-id: aggregator-ui

@@ -6,12 +6,14 @@ import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Arrays;
 import java.util.UUID;
 
 import edu.wpi.citizens.openbanking.TokenServiceClient.IssuedToken;
@@ -21,7 +23,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.web.client.ResourceAccessException;
 
 @SpringBootTest
@@ -39,7 +44,7 @@ class AccountsControllerTest {
 
     @Test
     void listsOnlyTheCallersAccountsAsFdxAccountDescriptors() throws Exception {
-        mvc.perform(get("/fdx/v6/accounts").header(HEADER, INTERACTION_ID))
+        mvc.perform(get("/fdx/v6/accounts").header(HEADER, INTERACTION_ID).with(alice()))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HEADER, INTERACTION_ID))
                 .andExpect(jsonPath("$.page.totalElements").value(2))
@@ -58,7 +63,7 @@ class AccountsControllerTest {
         when(tokenService.issue(any(), eq(INTERACTION_ID)))
                 .thenReturn(new IssuedToken(UUID.randomUUID(), "482910375526", "123456780"));
 
-        mvc.perform(get("/fdx/v6/accounts/acc-1001/payment-networks").header(HEADER, INTERACTION_ID))
+        mvc.perform(get("/fdx/v6/accounts/acc-1001/payment-networks").header(HEADER, INTERACTION_ID).with(alice()))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HEADER, INTERACTION_ID))
                 .andExpect(jsonPath("$.page.totalElements").value(1))
@@ -74,7 +79,7 @@ class AccountsControllerTest {
 
     @Test
     void unknownAccountReturnsFdxError701() throws Exception {
-        mvc.perform(get("/fdx/v6/accounts/nope/payment-networks").header(HEADER, INTERACTION_ID))
+        mvc.perform(get("/fdx/v6/accounts/nope/payment-networks").header(HEADER, INTERACTION_ID).with(alice()))
                 .andExpect(status().isNotFound())
                 .andExpect(header().string(HEADER, INTERACTION_ID))
                 .andExpect(jsonPath("$.code").value("701"))
@@ -83,14 +88,14 @@ class AccountsControllerTest {
 
     @Test
     void anotherCustomersAccountLooksLikeItDoesNotExist() throws Exception {
-        mvc.perform(get("/fdx/v6/accounts/acc-2001/payment-networks").header(HEADER, INTERACTION_ID))
+        mvc.perform(get("/fdx/v6/accounts/acc-2001/payment-networks").header(HEADER, INTERACTION_ID).with(alice()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("701"));
     }
 
     @Test
     void missingInteractionIdIsRejectedAndAHeaderIsStillReturned() throws Exception {
-        mvc.perform(get("/fdx/v6/accounts"))
+        mvc.perform(get("/fdx/v6/accounts").with(alice()))
                 .andExpect(status().isBadRequest())
                 .andExpect(header().exists(HEADER))
                 .andExpect(jsonPath("$.code").value("401"));
@@ -98,7 +103,7 @@ class AccountsControllerTest {
 
     @Test
     void interactionIdThatIsNotAUuidIsRejected() throws Exception {
-        mvc.perform(get("/fdx/v6/accounts").header(HEADER, "not-a-uuid"))
+        mvc.perform(get("/fdx/v6/accounts").header(HEADER, "not-a-uuid").with(alice()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("401"));
     }
@@ -107,10 +112,65 @@ class AccountsControllerTest {
     void tokenServiceFailureReturnsFdxError500WithoutDetails() throws Exception {
         when(tokenService.issue(any(), any())).thenThrow(new ResourceAccessException("connection refused"));
 
-        mvc.perform(get("/fdx/v6/accounts/acc-1001/payment-networks").header(HEADER, INTERACTION_ID))
+        mvc.perform(get("/fdx/v6/accounts/acc-1001/payment-networks").header(HEADER, INTERACTION_ID).with(alice()))
                 .andExpect(status().isInternalServerError())
                 .andExpect(header().string(HEADER, INTERACTION_ID))
                 .andExpect(jsonPath("$.code").value("500"))
                 .andExpect(content().string(not(containsString("connection refused"))));
+    }
+
+    @Test
+    void eachCustomerSeesOnlyTheirOwnAccounts() throws Exception {
+        mvc.perform(get("/fdx/v6/accounts").header(HEADER, INTERACTION_ID)
+                        .with(customer("bob", "fdx:accountbasic:read")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accounts", hasSize(1)))
+                .andExpect(jsonPath("$.accounts[0].accountId").value("acc-2001"));
+    }
+
+    @Test
+    void aCallWithoutAnAccessTokenReturnsFdxError603() throws Exception {
+        mvc.perform(get("/fdx/v6/accounts").header(HEADER, INTERACTION_ID))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string(HEADER, INTERACTION_ID))
+                .andExpect(jsonPath("$.code").value("603"));
+    }
+
+    @Test
+    void aTokenWithoutThePaymentSupportScopeCannotReadPaymentNetworks() throws Exception {
+        mvc.perform(get("/fdx/v6/accounts/acc-1001/payment-networks").header(HEADER, INTERACTION_ID)
+                        .with(customer("alice", "fdx:accountbasic:read")))
+                .andExpect(status().isForbidden())
+                .andExpect(header().string(HEADER, INTERACTION_ID))
+                .andExpect(jsonPath("$.code").value("602"));
+    }
+
+    @Test
+    void aTokenWithoutTheAccountBasicScopeCannotListAccounts() throws Exception {
+        mvc.perform(get("/fdx/v6/accounts").header(HEADER, INTERACTION_ID)
+                        .with(customer("alice", "fdx:paymentsupport:read")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("602"));
+    }
+
+    @Test
+    void aTokenThatDoesNotNameACustomerIsNotAuthorized() throws Exception {
+        mvc.perform(get("/fdx/v6/accounts").header(HEADER, INTERACTION_ID)
+                        .with(jwt().jwt(token -> token.claim("azp", "aggregator-ui"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_fdx:accountbasic:read"))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("602"));
+    }
+
+    private static RequestPostProcessor alice() {
+        return customer("alice", "fdx:accountbasic:read", "fdx:paymentsupport:read");
+    }
+
+    private static RequestPostProcessor customer(String username, String... scopes) {
+        return jwt()
+                .jwt(token -> token.claim("preferred_username", username).claim("azp", "aggregator-ui"))
+                .authorities(Arrays.stream(scopes)
+                        .map(scope -> new SimpleGrantedAuthority("SCOPE_" + scope))
+                        .toArray(GrantedAuthority[]::new));
     }
 }

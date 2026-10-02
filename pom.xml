@@ -25,5 +25,6 @@
         <module>token-service</module>
         <module>open-banking-api</module>
         <module>payment-receiver</module>
+        <module>gateway</module>
     </modules>
 </project>

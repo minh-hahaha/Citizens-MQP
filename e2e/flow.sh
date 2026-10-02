@@ -3,10 +3,12 @@
 # Usage: docker compose -f infra/docker-compose.yml up --build -d && e2e/flow.sh
 set -euo pipefail
 
-API_URL="${API_URL:-http://localhost:8082}"
+API_URL="${API_URL:-http://localhost:8081}"
+export KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8080}"
+E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 PAYMENTS_URL="${PAYMENTS_URL:-http://localhost:8084}"
 TOKEN_SERVICE_URL="${TOKEN_SERVICE_URL:-http://localhost:8083}"
-COMPOSE_FILE="$(cd "$(dirname "$0")/.." && pwd)/infra/docker-compose.yml"
+COMPOSE_FILE="$E2E_DIR/../infra/docker-compose.yml"
 ACCOUNT_ID="${ACCOUNT_ID:-acc-1001}"
 FAKE_ACCOUNT_NUMBER="000111224321"
 WAIT_SECONDS=90
@@ -24,12 +26,16 @@ wait_for() {
   fail "$name did not come up at $url"
 }
 
-# Calls the Open Banking API. Sets BODY, STATUS and ECHOED_ID.
+# Calls the Open Banking API through the gateway with the given access token
+# (empty for none). Sets BODY, STATUS and ECHOED_ID.
 fdx_get() {
-  local path="$1" interaction_id headers
+  local path="$1" access_token="${2-$ACCESS_TOKEN}" interaction_id headers
+  local auth=()
+  [ -z "$access_token" ] || auth=(-H "Authorization: Bearer $access_token")
   interaction_id="$(new_id)"
   headers="$(mktemp)"
-  BODY="$(curl -s -D "$headers" -o - -H "x-fapi-interaction-id: $interaction_id" "$API_URL$path")"
+  BODY="$(curl -s -D "$headers" -o - -H "x-fapi-interaction-id: $interaction_id" \
+    ${auth[@]+"${auth[@]}"} "$API_URL$path")"
   STATUS="$(awk 'NR==1 {print $2}' "$headers")"
   ECHOED_ID="$(awk 'tolower($1)=="x-fapi-interaction-id:" {print $2}' "$headers" | tr -d '\r')"
   rm -f "$headers"
@@ -47,15 +53,28 @@ pay() {
 }
 
 echo "Waiting for services"
-wait_for "open-banking-api" "$API_URL/actuator/health"
+wait_for "keycloak" "$KEYCLOAK_URL/realms/citizens/.well-known/openid-configuration"
+wait_for "gateway" "$API_URL/actuator/health"
 wait_for "payment-receiver" "$PAYMENTS_URL/actuator/health"
 
-echo "Flow step 2: the aggregator lists the customer's accounts"
+echo "Flow step 1: the customer logs in at the bank and consents"
+ACCESS_TOKEN="$("$E2E_DIR/login.sh" alice password)"
+[ -n "$ACCESS_TOKEN" ] || fail "no access token from Keycloak"
+pass "alice logged in and consented, aggregator holds an access token"
+
+echo "Flow step 2: the aggregator lists the customer's accounts through the gateway"
+fdx_get "/fdx/v6/accounts" ""
+[ "$STATUS" = "401" ] && [ "$(echo "$BODY" | jq -r '.code')" = "603" ] \
+  || fail "a call without an access token did not return FDX error 603 (HTTP $STATUS)"
+pass "a call without an access token returns FDX error 603"
+
 fdx_get "/fdx/v6/accounts"
 [ "$STATUS" = "200" ] || fail "accounts returned HTTP $STATUS"
 echo "$BODY" | jq -e --arg id "$ACCOUNT_ID" '.accounts[] | select(.accountId == $id)' > /dev/null \
   || fail "account $ACCOUNT_ID not in the list"
-pass "accounts listed, including $ACCOUNT_ID"
+[ "$(echo "$BODY" | jq '[.accounts[] | select(.accountId | startswith("acc-1") | not)] | length')" = "0" ] \
+  || fail "the list contains another customer's accounts"
+pass "alice's accounts listed, including $ACCOUNT_ID, and nobody else's"
 
 echo "Flow step 3: the aggregator gets a token, not the account number"
 fdx_get "/fdx/v6/accounts/$ACCOUNT_ID/payment-networks"
@@ -77,6 +96,16 @@ fdx_get "/fdx/v6/accounts/does-not-exist/payment-networks"
 [ "$STATUS" = "404" ] && [ "$(echo "$BODY" | jq -r '.code')" = "701" ] \
   || fail "unknown account did not return FDX error 701"
 pass "unknown account returns FDX error 701"
+
+fdx_get "/fdx/v6/accounts/acc-2001/payment-networks"
+[ "$STATUS" = "404" ] || fail "alice could read bob's account (HTTP $STATUS)"
+pass "another customer's account is not reachable"
+
+BASIC_ONLY_TOKEN="$(SCOPE="openid fdx:accountbasic:read" "$E2E_DIR/login.sh" alice password)"
+fdx_get "/fdx/v6/accounts/$ACCOUNT_ID/payment-networks" "$BASIC_ONLY_TOKEN"
+[ "$STATUS" = "403" ] && [ "$(echo "$BODY" | jq -r '.code')" = "602" ] \
+  || fail "a token without fdx:paymentsupport:read was not refused with FDX error 602 (HTTP $STATUS)"
+pass "a token without the payment scope returns FDX error 602"
 
 echo "Flow step 4: a payment to the token succeeds"
 pay "$ROUTING" "$TOKEN"

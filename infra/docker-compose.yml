@@ -40,10 +40,27 @@ services:
         MODULE: open-banking-api
     environment:
       TOKEN_SERVICE_URL: http://token-service:8083
-    ports:
-      - "8082:8082"
+      KEYCLOAK_ISSUER: http://localhost:8080/realms/citizens
+      KEYCLOAK_JWKS: http://keycloak:8080/realms/citizens/protocol/openid-connect/certs
+    # No host port: the Open Banking API is reached only through the gateway.
     depends_on:
       - token-service
+
+  # Stand-in for IBM API Connect: the only public entry point to the Open Banking API.
+  gateway:
+    build:
+      context: ..
+      args:
+        MODULE: gateway
+    environment:
+      OPEN_BANKING_API_URL: http://open-banking-api:8082
+      KEYCLOAK_ISSUER: http://localhost:8080/realms/citizens
+      KEYCLOAK_JWKS: http://keycloak:8080/realms/citizens/protocol/openid-connect/certs
+      ALLOWED_ORIGIN: http://localhost:5173
+    ports:
+      - "8081:8081"
+    depends_on:
+      - open-banking-api
 
   payment-receiver:
     build:
@@ -56,3 +73,20 @@ services:
       - "8084:8084"
     depends_on:
       - token-service
+
+  # Stand-in for Ping Identity: the bank's login and consent server.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: dev-only-admin-password
+      # Tokens always carry the browser-facing issuer, even when a service
+      # reaches Keycloak as http://keycloak:8080 inside the Compose network.
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak/citizens-realm.json:/opt/keycloak/data/import/citizens-realm.json:ro
+    ports:
+      - "8080:8080"

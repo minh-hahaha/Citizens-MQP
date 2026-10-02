@@ -10,6 +10,8 @@ import edu.wpi.citizens.openbanking.fdx.AccountPaymentNetworkList;
 import edu.wpi.citizens.openbanking.fdx.Accounts;
 import edu.wpi.citizens.openbanking.fdx.PageMetadata;
 
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -40,8 +42,8 @@ public class AccountsController {
 
     /** FDX searchForAccounts. */
     @GetMapping
-    public Accounts searchForAccounts() {
-        Caller caller = callerResolver.currentCaller();
+    public Accounts searchForAccounts(@AuthenticationPrincipal Jwt accessToken) {
+        Caller caller = callerResolver.resolve(accessToken);
         List<AccountDescriptor> descriptors = accounts.findByOwner(caller.username()).stream()
                 .map(AccountsController::toDescriptor)
                 .toList();
@@ -52,8 +54,9 @@ public class AccountsController {
     @GetMapping("/{accountId}/payment-networks")
     public AccountPaymentNetworkList getAccountPaymentNetworks(
             @PathVariable String accountId,
-            @RequestHeader(InteractionIdFilter.HEADER) String interactionId) {
-        Caller caller = callerResolver.currentCaller();
+            @RequestHeader(InteractionIdFilter.HEADER) String interactionId,
+            @AuthenticationPrincipal Jwt accessToken) {
+        Caller caller = callerResolver.resolve(accessToken);
         FakeAccount account = accounts.findByIdAndOwner(accountId, caller.username())
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
         String consentId = consents.consentIdFor(caller, accountId);

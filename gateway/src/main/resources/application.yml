@@ -1,0 +1,25 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: open-banking-api
+              uri: ${OPEN_BANKING_API_URL:http://localhost:8082}
+              predicates:
+                - Path=/fdx/v6/**
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER:http://localhost:8080/realms/citizens}
+          jwk-set-uri: ${KEYCLOAK_JWKS:http://localhost:8080/realms/citizens/protocol/openid-connect/certs}
+
+gateway:
+  # The browser origin of the aggregator UI, allowed to call the API.
+  allowed-origin: ${ALLOWED_ORIGIN:http://localhost:5173}

@@ -10,6 +10,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -17,9 +19,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * FDX requires x-fapi-interaction-id (a UUID) on every request and echoes it on every
- * response, including errors.
+ * response, including errors. It runs before security so that 401 and 403 responses
+ * carry the header too.
  */
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class InteractionIdFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "x-fapi-interaction-id";

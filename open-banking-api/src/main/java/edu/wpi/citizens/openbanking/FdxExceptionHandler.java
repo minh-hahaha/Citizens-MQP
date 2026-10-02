@@ -5,6 +5,7 @@ import edu.wpi.citizens.openbanking.fdx.FdxError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -19,6 +20,12 @@ public class FdxExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public FdxError accountNotFound(AccountNotFoundException e) {
         return FdxError.ACCOUNT_NOT_FOUND;
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public FdxError notAuthorized(AccessDeniedException e) {
+        return FdxError.NOT_AUTHORIZED;
     }
 
     @ExceptionHandler(Exception.class)
