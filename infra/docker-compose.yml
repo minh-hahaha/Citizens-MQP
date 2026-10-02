@@ -17,3 +17,30 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+
+  token-service:
+    build:
+      context: ..
+      args:
+        MODULE: token-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/vault
+      DB_USER: vault
+      DB_PASSWORD: dev-only-vault-password
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  open-banking-api:
+    build:
+      context: ..
+      args:
+        MODULE: open-banking-api
+    environment:
+      TOKEN_SERVICE_URL: http://token-service:8083
+    ports:
+      - "8082:8082"
+    depends_on:
+      - token-service

@@ -22,5 +22,7 @@
     </properties>
 
     <modules>
+        <module>token-service</module>
+        <module>open-banking-api</module>
     </modules>
 </project>
