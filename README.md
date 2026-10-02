@@ -105,7 +105,7 @@ The Open Banking API follows FDX API v6.4.1 for the two endpoints it has. It is 
 
 ## Known limitations
 
-- **Revocation is not instant.** A job checks Keycloak every 5 seconds (`RECONCILE_INTERVAL_MS`). In test runs the payment started failing 1 to 4 seconds after consent was removed. FDX expects immediate revocation, so a real build needs the identity provider to push the event.
+- **Revocation is not instant.** A job checks Keycloak every 5 seconds (`RECONCILE_INTERVAL_MS`). In test runs the payment started failing 1 to 5 seconds after consent was removed. FDX expects immediate revocation, so a real build needs the identity provider to push the event.
 - **No login between the internal services.** The Token Service trusts any caller on the Compose network, and the caller name in the audit table is self-declared.
 - **The Open Banking API keeps consent links in memory.** If it restarts, it forgets them. The next call then issues a new token, and the old token stays active until it expires.
 - **The Payment Receiver is a mock.** It is not connected to any payment network and accepts payments from anyone.
