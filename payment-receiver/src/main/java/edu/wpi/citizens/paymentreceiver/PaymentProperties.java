@@ -7,5 +7,5 @@ import org.springframework.validation.annotation.Validated;
 
 @Validated
 @ConfigurationProperties(prefix = "payments")
-public record PaymentProperties(@NotBlank String tokenServiceUrl) {
+public record PaymentProperties(@NotBlank String tokenServiceUrl, @NotBlank String allowedOrigin) {
 }

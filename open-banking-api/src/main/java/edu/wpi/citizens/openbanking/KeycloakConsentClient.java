@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -32,13 +33,21 @@ public class KeycloakConsentClient {
         this.restClient = builder.baseUrl(keycloak.url()).build();
     }
 
-    /** Returns when the customer's grant to the client was created, or empty if there is none. */
+    /**
+     * Returns when the customer's grant to the client was created, or empty if there is
+     * none. A customer Keycloak no longer knows has no grant either.
+     */
     public Optional<Long> grantCreatedAt(String userId, String clientId) {
-        List<UserConsent> consents = restClient.get()
-                .uri("/admin/realms/{realm}/users/{userId}/consents", keycloak.realm(), userId)
-                .headers(headers -> headers.setBearerAuth(serviceToken()))
-                .retrieve()
-                .body(new ParameterizedTypeReference<>() { });
+        List<UserConsent> consents;
+        try {
+            consents = restClient.get()
+                    .uri("/admin/realms/{realm}/users/{userId}/consents", keycloak.realm(), userId)
+                    .headers(headers -> headers.setBearerAuth(serviceToken()))
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<>() { });
+        } catch (HttpClientErrorException.NotFound e) {
+            return Optional.empty();
+        }
         if (consents == null) {
             return Optional.empty();
         }

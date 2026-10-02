@@ -1,0 +1,285 @@
+:root {
+  --ink: #16202a;
+  --muted: #5b6875;
+  --line: #d9e0e7;
+  --page: #f4f6f8;
+  --card: #ffffff;
+  --brand: #00664f;
+  --brand-dark: #004d3b;
+  --good-bg: #e6f4ee;
+  --good: #0a6b47;
+  --bad-bg: #fdecec;
+  --bad: #a4262c;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--page);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+}
+
+.page-header p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 520px;
+}
+
+.step {
+  display: flex;
+  gap: 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 12px;
+}
+
+.step-locked {
+  opacity: 0.55;
+}
+
+.step-number {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  background: var(--line);
+  color: var(--ink);
+}
+
+.step-active .step-number {
+  background: var(--brand);
+  color: #fff;
+}
+
+.step-done .step-number {
+  background: var(--good-bg);
+  color: var(--good);
+}
+
+.step-body {
+  flex: 1;
+  min-width: 0;
+}
+
+h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+
+h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.step-body p {
+  margin: 10px 0;
+  line-height: 1.5;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  background: var(--page);
+  padding: 1px 5px;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+
+button,
+.button {
+  display: inline-block;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--brand);
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+button:hover:not(:disabled),
+.button:hover {
+  background: var(--brand-dark);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+button.secondary,
+.button.secondary {
+  color: var(--brand);
+  background: #fff;
+}
+
+button.secondary:hover:not(:disabled),
+.button.secondary:hover {
+  background: var(--good-bg);
+}
+
+.accounts {
+  display: grid;
+  gap: 8px;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.account.selected {
+  border-color: var(--brand);
+  background: var(--good-bg);
+}
+
+.account-name {
+  font-weight: 600;
+}
+
+.account-detail {
+  margin-left: auto;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+}
+
+.stored {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--page);
+}
+
+.stored dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.stored dt {
+  color: var(--muted);
+}
+
+.stored dd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.stored .token {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.outcome {
+  display: grid;
+  gap: 4px;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 12px;
+}
+
+.outcome code {
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+}
+
+.outcome-posted {
+  background: var(--good-bg);
+  color: var(--good);
+}
+
+.outcome-rejected {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.error {
+  background: var(--bad-bg);
+  color: var(--bad);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.request-log {
+  margin-top: 32px;
+}
+
+.request-log table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+
+.request-log th,
+.request-log td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.request-log .ok {
+  color: var(--good);
+  font-weight: 600;
+}
+
+.request-log .bad {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+@media (max-width: 560px) {
+  .page-header {
+    flex-direction: column;
+  }
+
+  .stored dl {
+    grid-template-columns: 1fr;
+  }
+}

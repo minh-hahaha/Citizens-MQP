@@ -7,6 +7,7 @@ API_URL="${API_URL:-http://localhost:8081}"
 export KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8080}"
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 PAYMENTS_URL="${PAYMENTS_URL:-http://localhost:8084}"
+COMPOSE_FILE="$E2E_DIR/../infra/docker-compose.yml"
 # DEV-ONLY Keycloak admin login, from infra/docker-compose.yml.
 KEYCLOAK_ADMIN_USER="${KEYCLOAK_ADMIN_USER:-admin}"
 KEYCLOAK_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-dev-only-admin-password}"
@@ -42,6 +43,11 @@ fdx_get() {
   ECHOED_ID="$(awk 'tolower($1)=="x-fapi-interaction-id:" {print $2}' "$headers" | tr -d '\r')"
   rm -f "$headers"
   [ "$ECHOED_ID" = "$interaction_id" ] || fail "x-fapi-interaction-id not echoed on $path"
+}
+
+# Runs Keycloak's admin command-line tool inside the Keycloak container.
+keycloak_admin() {
+  docker compose -f "$COMPOSE_FILE" exec -T keycloak /opt/keycloak/bin/kcadm.sh "$@" 2> /dev/null
 }
 
 # Sends a payment to routing number + account identifier. Sets BODY and STATUS.
@@ -124,15 +130,14 @@ pay "$ROUTING" "999999999999"
 pass "payment to a made-up token is rejected"
 
 echo "Flow step 5: the customer revokes consent at the bank"
-ADMIN_TOKEN="$(curl -s "$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" \
-  -d grant_type=password -d client_id=admin-cli \
-  -d "username=$KEYCLOAK_ADMIN_USER" -d "password=$KEYCLOAK_ADMIN_PASSWORD" | jq -r '.access_token')"
-USER_ID="$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
-  "$KEYCLOAK_URL/admin/realms/citizens/users?username=alice&exact=true" | jq -r '.[0].id')"
-# The same call Keycloak's account console makes when a customer removes an application's access.
-REVOKE_STATUS="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
-  "$KEYCLOAK_URL/admin/realms/citizens/users/$USER_ID/consents/aggregator-ui")"
-[ "$REVOKE_STATUS" = "204" ] || fail "could not revoke alice's consent in Keycloak (HTTP $REVOKE_STATUS)"
+# The same thing happens when the customer removes the aggregator's access on the
+# bank's account page (http://localhost:8080/realms/citizens/account/applications).
+keycloak_admin config credentials --server http://localhost:8080 --realm master \
+  --user "$KEYCLOAK_ADMIN_USER" --password "$KEYCLOAK_ADMIN_PASSWORD" \
+  || fail "could not log in to Keycloak as admin"
+USER_ID="$(keycloak_admin get users -r citizens -q username=alice -q exact=true --fields id | jq -r '.[0].id')"
+keycloak_admin delete "users/$USER_ID/consents/aggregator-ui" -r citizens \
+  || fail "could not revoke alice's consent in Keycloak"
 REVOKED_AT="$(date +%s)"
 pass "alice's consent for the aggregator is revoked in Keycloak"
 

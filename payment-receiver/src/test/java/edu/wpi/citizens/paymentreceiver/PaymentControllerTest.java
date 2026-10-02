@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -70,6 +71,15 @@ class PaymentControllerTest {
         pay(ROUTING, "abc", "25.00").andExpect(status().isBadRequest());
         pay(ROUTING, TOKEN, "0").andExpect(status().isBadRequest());
         pay(ROUTING, TOKEN, "-5").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void allowsTheAggregatorUiOriginAndNoOther() throws Exception {
+        mvc.perform(get("/v1/ledger").header("Origin", "http://localhost:5173"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"));
+        mvc.perform(get("/v1/ledger").header("Origin", "http://evil.example"))
+                .andExpect(status().isForbidden());
     }
 
     private ResultActions pay(String routing, String identifier, String amount) throws Exception {
