@@ -1,0 +1,25 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          # Everything under /fdx/v6 is forwarded to the Open Banking API.
+          routes:
+            - id: open-banking-api
+              uri: ${OPEN_BANKING_API_URL:http://localhost:8082}
+              predicates:
+                - Path=/fdx/v6/**
+          # Lets the aggregator UI, which runs in the browser, call the API.
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOrigins: "http://localhost:5173"
+                allowedMethods: GET
+                allowedHeaders: "*"
+                # Lets the UI read this header for its request log.
+                exposedHeaders: x-fapi-interaction-id

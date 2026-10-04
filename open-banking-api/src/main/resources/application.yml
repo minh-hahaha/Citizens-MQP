@@ -1,0 +1,22 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: open-banking-api
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # The issuer is the address the browser uses. The keys may be fetched from a
+          # different address (the Compose service name) and that is fine.
+          issuer-uri: ${KEYCLOAK_ISSUER:http://localhost:8080/realms/citizens}
+          jwk-set-uri: ${KEYCLOAK_JWKS:http://localhost:8080/realms/citizens/protocol/openid-connect/certs}
+
+openbanking:
+  token-service-url: ${TOKEN_SERVICE_URL:http://localhost:8083}
+  keycloak-url: ${KEYCLOAK_URL:http://localhost:8080}
+  # DEV-ONLY secret, matches infra/keycloak/citizens-realm.json.
+  keycloak-client-secret: ${KEYCLOAK_CLIENT_SECRET:dev-only-open-banking-api-secret}
+  # How often to check Keycloak for revoked consents. This is the revocation delay.
+  reconcile-interval-ms: ${RECONCILE_INTERVAL_MS:5000}

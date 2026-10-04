@@ -1,0 +1,9 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: payment-receiver
+
+payments:
+  token-service-url: ${TOKEN_SERVICE_URL:http://localhost:8083}

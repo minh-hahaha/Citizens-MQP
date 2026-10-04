@@ -1,0 +1,99 @@
+# Citizens tokenization prototype. Everything here is fake test data.
+# All passwords in this file are DEV-ONLY and must never be reused anywhere real.
+name: citizens-mqp
+
+services:
+  # The token vault. Only the Token Service uses it.
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: vault
+      POSTGRES_USER: vault
+      POSTGRES_PASSWORD: dev-only-vault-password
+    ports:
+      # Host port 5433 so it does not clash with a Postgres already running on 5432.
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vault -d vault"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  token-service:
+    build:
+      context: .
+      args:
+        MODULE: token-service
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/vault
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  open-banking-api:
+    build:
+      context: .
+      args:
+        MODULE: open-banking-api
+    environment:
+      TOKEN_SERVICE_URL: http://token-service:8083
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_JWKS: http://keycloak:8080/realms/citizens/protocol/openid-connect/certs
+    # No host port: the Open Banking API is reached only through the gateway.
+    depends_on:
+      - token-service
+
+  # Stand-in for IBM API Connect: the only public entry point to the Open Banking API.
+  gateway:
+    build:
+      context: .
+      args:
+        MODULE: gateway
+    environment:
+      OPEN_BANKING_API_URL: http://open-banking-api:8082
+    ports:
+      - "8081:8081"
+    depends_on:
+      - open-banking-api
+
+  # Mock of the bank's ACH side: resolves a token and posts to a fake ledger.
+  payment-receiver:
+    build:
+      context: .
+      args:
+        MODULE: payment-receiver
+    environment:
+      TOKEN_SERVICE_URL: http://token-service:8083
+    ports:
+      - "8084:8084"
+    depends_on:
+      - token-service
+
+  # Stand-in for Ping Identity: the bank's login and consent server.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: dev-only-admin-password
+      # Tokens always carry the browser-facing issuer, even when a service
+      # reaches Keycloak as http://keycloak:8080 inside the Compose network.
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    volumes:
+      - ./infra/keycloak/citizens-realm.json:/opt/keycloak/data/import/citizens-realm.json:ro
+    ports:
+      - "8080:8080"
+
+  # The mock aggregator. Open http://localhost:5173 to run the demo.
+  aggregator-ui:
+    build:
+      context: ./aggregator-ui
+    ports:
+      - "5173:5173"
+    depends_on:
+      - gateway
+      - keycloak
+      - payment-receiver

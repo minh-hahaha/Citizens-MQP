@@ -1,0 +1,15 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: token-service
+  datasource:
+    # Defaults point at the Compose Postgres on the host. The password is DEV-ONLY.
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/vault}
+    username: ${DB_USER:vault}
+    password: ${DB_PASSWORD:dev-only-vault-password}
+
+tokens:
+  # Fake routing number. Passes the ABA checksum but is not a real bank.
+  routing-number: "123456780"
