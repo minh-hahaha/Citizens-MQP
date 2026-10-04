@@ -1,80 +1,96 @@
 # Citizens Tokenization Prototype
 
-WPI MQP prototype, sponsored by Citizens Financial Group. It shows a data aggregator receiving a revocable **token** instead of a bank account number.
+WPI MQP prototype, sponsored by Citizens Financial Group. A data aggregator asks the bank for a customer's account number and gets a revocable **token** instead. Payments sent to the token work until the customer revokes consent.
 
-Everything here is fake test data. No real Citizens data, account numbers or credentials are used. This is a prototype, not production code.
-
-## The flow
-
-1. The customer logs in at the bank and consents to share an account with the aggregator.
-2. The aggregator lists the customer's accounts through the Open Banking API.
-3. The aggregator asks for the account's payment details and gets a token, not the account number.
-4. The aggregator sends a payment to routing number + token. The bank resolves the token and posts it. **Payment succeeds.**
-5. The customer revokes consent at the bank. The token is revoked.
-6. The aggregator sends the same payment again. **Payment fails.**
+Everything here is fake test data. This is a prototype, not production code.
 
 ## Run it
 
-You need Docker. Then, from the repo root:
+You only need Docker. From the repo root:
 
 ```bash
-docker compose -f infra/docker-compose.yml up --build -d
+docker compose up --build -d
 ```
 
-The first build takes a few minutes. When it is up, open **http://localhost:5173** and follow the six steps on the page.
+The first build takes a few minutes. Then open **http://localhost:5173** and follow the six steps on the page:
 
-- Fake customers: `alice`, `bob`, `carol`. Password: `password`.
-- For step 5, the page links to the bank's own "Applications" page. Open **Mock Aggregator** and choose **Remove access**.
-- To run it again, choose **Start over**. Linking again gives a new token, and the old one stays dead.
+1. **Connect your bank.** Log in as `alice` (password: `password`) and choose **Yes** on the consent page.
+2. **Pick an account.**
+3. **Get the account number.** The page shows a 12-digit token, not the real account number.
+4. **Send a test payment.** The bank resolves the token and posts the payment.
+5. **Revoke consent.** The page links to the bank's "Applications" page. Open **Mock Aggregator** and choose **Remove access**.
+6. **Send the same payment again.** Wait about 5 seconds first. The bank now rejects it.
 
-To stop everything: `docker compose -f infra/docker-compose.yml down`.
+The request log at the bottom of the page lists every call the aggregator made.
 
-## Check that it works
+To go again, choose **Start over**. A new consent gets a new token. The old one stays dead.
+
+Useful commands:
 
 ```bash
-e2e/flow.sh
+# Look inside the token vault
+docker compose exec postgres psql -U vault -c 'select * from account_token'
+
+# The fake ledger: every payment the bank posted
+curl http://localhost:8084/v1/ledger
+
+docker compose logs -f open-banking-api   # watch the revocation happen
+docker compose down                       # stop everything and wipe the data
 ```
 
-This script runs the whole flow against the running stack with `curl` (it needs `jq` and `openssl`) and prints one line per check. It logs in and consents at Keycloak, gets a token, pays, revokes consent, and confirms that the payment then fails. It also prints how long revocation took.
+If you pulled this change while the old version was running, run `docker compose down --remove-orphans` once before starting.
 
-Unit and integration tests:
+## How it works
 
-```bash
-mvn verify                               # Java services (needs Docker for the database tests)
-cd aggregator-ui && npm ci && npm test   # UI
+```
+browser (aggregator-ui) ──login + consent──▶ Keycloak
+   │        │
+   │        │ GET /fdx/v6/accounts/{id}/payment-networks  (with the access token)
+   │        ▼
+   │     gateway ──▶ open-banking-api ──▶ token-service ──▶ PostgreSQL
+   │                       │                    ▲
+   │                       │                    │ detokenize
+   │ POST /v1/payments     │                    │
+   └───────────────────────┼──────▶ payment-receiver ──▶ fake ledger
+                           │
+                           └── every 5 s: "is the consent still there?" ──▶ Keycloak
 ```
 
-## What is in the repo
+1. The UI sends the customer to Keycloak. They log in and consent. Keycloak gives the UI an access token (a JWT).
+2. The UI calls the Open Banking API through the gateway, with the access token.
+3. The Open Banking API checks the token, finds the customer's account, asks Keycloak when the customer consented (that becomes the `consentId`), and asks the Token Service for a token for `{account, aggregator, consentId}`.
+4. The Token Service returns the existing active token for those three things, or stores a new random 12-digit one.
+5. The UI sends a payment, addressed to the routing number and the token, to the Payment Receiver. It asks the Token Service which account the token stands for. If the token is active, the payment goes on the fake ledger. If not, it is rejected.
+6. Every 5 seconds the Open Banking API asks Keycloak whether each consent still exists. If one is gone, it tells the Token Service to revoke that consent's tokens. From then on step 5 is rejected.
 
-| Folder | What it is | Citizens tool it stands in for |
-|---|---|---|
-| `token-service` | Creates, resolves and revokes tokens. The only service that uses PostgreSQL. | |
-| `open-banking-api` | The two FDX endpoints, and the job that turns consent revocation into token revocation. | |
-| `gateway` | Checks the access token and FDX scope, then forwards to the Open Banking API. | IBM API Connect |
-| `payment-receiver` | Mock of the bank's side of an ACH payment, with a fake in-memory ledger. | |
-| `aggregator-ui` | The mock aggregator the demo is driven from (React). | |
-| `infra` | `docker-compose.yml` and the Keycloak realm (bank login and consent). | Ping Identity, OpenShift |
-| `e2e` | `flow.sh`, the end-to-end check, and `login.sh`, which logs in with `curl`. | |
-| `docs/fdx` | The FDX v6.4.1 OpenAPI files and the team's notes. | |
+## Where to read the code
 
-Ports on your machine:
+About 630 lines of Java and 430 of TypeScript. Read in this order:
 
-| Port | Service |
+| File | What it does |
 |---|---|
-| 5173 | Aggregator UI |
-| 8080 | Keycloak (admin console login: `admin` / `dev-only-admin-password`) |
-| 8081 | Gateway, the only way to reach the Open Banking API |
-| 8084 | Payment Receiver |
-| 5433 | PostgreSQL |
+| `docker-compose.yml` | The seven containers and how they connect. |
+| `aggregator-ui/src/App.tsx` | The page with the six steps. `auth.ts` is the Keycloak login, `api.ts` the three calls it makes. |
+| `gateway/src/main/resources/application.yml` | The whole gateway: forward `/fdx/v6/**` to the Open Banking API. |
+| `open-banking-api/.../AccountsController.java` | The two FDX endpoints. **Start here for the Java.** |
+| `open-banking-api/.../ConsentService.java` | Builds the `consentId` and runs the revocation check. |
+| `open-banking-api/.../KeycloakClient.java` | Asks Keycloak whether a consent exists. |
+| `open-banking-api/.../TokenServiceClient.java` | Calls the Token Service. |
+| `open-banking-api/.../SecurityConfig.java` | Requires a valid access token with the right FDX scope, and echoes `x-fapi-interaction-id`. |
+| `open-banking-api/.../Fdx.java`, `FakeAccount.java` | The FDX response shapes and the seeded fake accounts. |
+| `token-service/.../TokenController.java` | The whole Token Service: issue, detokenize, revoke. |
+| `token-service/.../db/migration/V1__init.sql` | The one table in the vault. |
+| `payment-receiver/.../PaymentController.java` | The whole Payment Receiver: resolve the token, post to the fake ledger or reject. |
+| `infra/keycloak/citizens-realm.json` | Keycloak setup: the customer alice, the clients, the FDX scopes. Only what differs from Keycloak's defaults, plus the few built-in pieces the flow needs. |
 
-The Token Service and the Open Banking API have no port on your machine. They are reachable only from the other containers.
+Ports on your machine: UI 5173, Keycloak 8080 (admin console login `admin` / `dev-only-admin-password`), gateway 8081, Token Service 8083, Payment Receiver 8084, PostgreSQL 5433.
 
 ## The FDX part
 
-The Open Banking API follows FDX API v6.4.1 for the two endpoints it has. It is FDX-aligned, not FDX-certified.
+The Open Banking API follows FDX API v6.4.1 for its two endpoints. It is FDX-aligned, not FDX-certified.
 
-- `GET /fdx/v6/accounts` needs scope `fdx:accountbasic:read` and returns the `Accounts` schema.
-- `GET /fdx/v6/accounts/{accountId}/payment-networks` needs scope `fdx:paymentsupport:read` and returns `AccountPaymentNetworkList`:
+- `GET /fdx/v6/accounts` needs scope `fdx:accountbasic:read`.
+- `GET /fdx/v6/accounts/{accountId}/payment-networks` needs scope `fdx:paymentsupport:read` and returns:
 
 ```json
 {
@@ -92,31 +108,19 @@ The Open Banking API follows FDX API v6.4.1 for the two endpoints it has. It is 
 }
 ```
 
-- `x-fapi-interaction-id` (a UUID) is required on every request and echoed on every response.
-- Errors use the FDX `Error` body with a string `code`: `701` account not found, `602` not authorized, `603` authentication failed, `401` invalid input, `500` internal error.
-
-## How tokens behave
-
-- A token is 12 random digits with no leading zero. The routing number is the fake `123456780`.
-- One active token per account, aggregator and consent. Asking again returns the same token.
-- Resolving a token fails the same way whether the token is unknown, revoked, expired, or sent with the wrong routing number. The caller cannot tell which.
-- Every attempt to resolve a token is written to an append-only audit table.
-- Logs show a token's ID and last four digits only.
+- `x-fapi-interaction-id` is echoed on every response.
+- Errors use the FDX `Error` body: `701` account not found, `602` not authorized, `603` authentication failed.
 
 ## Known limitations
 
-- **Revocation is not instant.** A job checks Keycloak every 5 seconds (`RECONCILE_INTERVAL_MS`). In test runs the payment started failing 1 to 5 seconds after consent was removed. FDX expects immediate revocation, so a real build needs the identity provider to push the event.
-- **No login between the internal services.** The Token Service trusts any caller on the Compose network, and the caller name in the audit table is self-declared.
-- **The Open Banking API keeps consent links in memory.** If it restarts, it forgets them. The next call then issues a new token, and the old token stays active until it expires.
-- **The Payment Receiver is a mock.** It is not connected to any payment network and accepts payments from anyone.
+This version is deliberately small so it is quick to read. It is not robust.
+
+- **No tests.**
+- **The payment is a mock.** The Payment Receiver proves the resolve flow. It does not touch a real ACH path, and its ledger is in memory.
+- **Revocation is not instant.** The check runs every 5 seconds. FDX expects immediate revocation, so a real build needs the identity provider to push the event.
+- **Only the Open Banking API checks the access token.** The gateway just forwards. The Token Service and the Payment Receiver trust any caller.
+- **The Open Banking API remembers consents in memory.** If it restarts before a consent is revoked, that consent's tokens are never revoked.
+- **Two requests at the same instant for a brand-new link can fail once.** The database allows one active token per link, and the loser is not retried.
+- **No audit trail, no token expiry.** Earlier commits on this branch had both, plus the tests.
 - **Consent in Keycloak is per aggregator, not per account.** Removing access revokes the tokens for all of that customer's accounts with that aggregator.
-- **The real FDX consent flow is not implemented.** FDX uses PAR plus RAR with an `fdxConsentId` claim in the access token. Here the Open Banking API makes up its own consent IDs.
-- **Not built:** gateway rate limiting, Jenkins and SonarQube, the FF1 benchmark, architecture decision records, Datadog, Vault, OpenShift deployment.
-
-## Changing the Keycloak realm
-
-`infra/keycloak/citizens-realm.json` is a Keycloak realm export with the fake users added. To change it, edit the realm in the admin console at http://localhost:8080, export it again, and replace the file. Keycloak reads the file only when it starts with an empty database, so recreate the container afterwards:
-
-```bash
-docker compose -f infra/docker-compose.yml up -d --force-recreate keycloak
-```
+- **The real FDX consent flow (PAR plus RAR with an `fdxConsentId` claim) is not implemented.**

@@ -1,7 +1,9 @@
 package edu.wpi.citizens.openbanking;
 
+import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -9,41 +11,27 @@ import org.springframework.web.client.RestClient;
 @Component
 public class TokenServiceClient {
 
-    public record IssueRequest(UUID accountRef, String clientId, String consentId) {
+    public record IssuedToken(String tokenValue, String routingNumber) {
     }
-
-    private record RevokeByConsentRequest(String consentId, String reason) {
-    }
-
-    public record IssuedToken(UUID tokenId, String tokenValue, String routingNumber) {
-    }
-
-    private static final String ACTOR_HEADER = "x-actor";
-    private static final String ACTOR = "open-banking-api";
 
     private final RestClient restClient;
 
-    public TokenServiceClient(RestClient.Builder builder, OpenBankingProperties properties) {
-        this.restClient = builder.baseUrl(properties.tokenServiceUrl()).build();
+    public TokenServiceClient(RestClient.Builder builder, @Value("${openbanking.token-service-url}") String url) {
+        this.restClient = builder.baseUrl(url).build();
     }
 
-    public IssuedToken issue(IssueRequest request, String interactionId) {
+    public IssuedToken issue(UUID accountRef, String clientId, String consentId) {
         return restClient.post()
                 .uri("/v1/tokens")
-                .header(ACTOR_HEADER, ACTOR)
-                .header(InteractionIdFilter.HEADER, interactionId)
-                .body(request)
+                .body(Map.of("accountRef", accountRef, "clientId", clientId, "consentId", consentId))
                 .retrieve()
                 .body(IssuedToken.class);
     }
 
-    /** Revokes every token issued under the consent. */
-    public void revokeByConsent(String consentId, String reason, String requestId) {
+    public void revokeByConsent(String consentId) {
         restClient.post()
                 .uri("/v1/tokens/revoke-by-consent")
-                .header(ACTOR_HEADER, ACTOR)
-                .header(InteractionIdFilter.HEADER, requestId)
-                .body(new RevokeByConsentRequest(consentId, reason))
+                .body(Map.of("consentId", consentId))
                 .retrieve()
                 .toBodilessEntity();
     }

@@ -1,11 +1,10 @@
-/** Where everything lives. Defaults match infra/docker-compose.yml. */
+/** Where everything lives. These match docker-compose.yml. */
 export const config = {
-  keycloakAuthority: import.meta.env.VITE_KEYCLOAK_AUTHORITY ?? 'http://localhost:8080/realms/citizens',
-  clientId: import.meta.env.VITE_CLIENT_ID ?? 'aggregator-ui',
+  keycloakAuthority: 'http://localhost:8080/realms/citizens',
+  clientId: 'aggregator-ui',
   scope: 'openid fdx:accountbasic:read fdx:paymentsupport:read',
-  apiUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:8081',
-  paymentsUrl: import.meta.env.VITE_PAYMENTS_URL ?? 'http://localhost:8084',
-  bankAppsPage:
-    import.meta.env.VITE_BANK_APPS_PAGE ?? 'http://localhost:8080/realms/citizens/account/applications',
+  apiUrl: 'http://localhost:8081',
+  paymentsUrl: 'http://localhost:8084',
   paymentAmount: 25,
+  bankAppsPage: 'http://localhost:8080/realms/citizens/account/applications',
 } as const

@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { User } from 'oidc-client-ts'
 import {
-  ApiError,
-  createApi,
+  getPaymentNetwork,
+  listAccounts,
+  sendPayment,
   type Account,
-  type LedgerEntry,
   type PaymentNetwork,
   type PaymentResult,
   type RequestLogEntry,
@@ -13,96 +13,67 @@ import { connectBank, forgetUser, loadUser } from './auth'
 import { config } from './config'
 import { PaymentOutcome } from './components/PaymentOutcome'
 import { RequestLog } from './components/RequestLog'
-import { StepCard, type StepState } from './components/StepCard'
-
-function describe(error: unknown): string {
-  if (error instanceof ApiError) {
-    return error.code ? `FDX error ${error.code}: ${error.message}` : error.message
-  }
-  return error instanceof Error ? error.message : 'Something went wrong'
-}
-
-function stepState(unlocked: boolean, done: boolean): StepState {
-  if (!unlocked) return 'locked'
-  return done ? 'done' : 'active'
-}
+import { StepCard } from './components/StepCard'
 
 export function App() {
   const [user, setUser] = useState<User | null>(null)
-  const [accounts, setAccounts] = useState<Account[] | null>(null)
+  const [accounts, setAccounts] = useState<Account[]>([])
   const [accountId, setAccountId] = useState<string | null>(null)
   const [network, setNetwork] = useState<PaymentNetwork | null>(null)
   const [payments, setPayments] = useState<PaymentResult[]>([])
-  const [ledger, setLedger] = useState<LedgerEntry[]>([])
   const [visitedBank, setVisitedBank] = useState(false)
-  const [log, setLog] = useState<RequestLogEntry[]>([])
+  const [requestLog, setRequestLog] = useState<RequestLogEntry[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
 
-  const api = useMemo(
-    () =>
-      createApi({
-        apiUrl: config.apiUrl,
-        paymentsUrl: config.paymentsUrl,
-        onRequest: (entry) => setLog((entries) => [...entries, entry]),
-      }),
-    [],
-  )
+  const logRequest = (entry: RequestLogEntry) => setRequestLog((entries) => [...entries, entry])
 
-  /** Runs one action, showing a busy state and any error it produces. */
-  const run = useCallback(async (action: () => Promise<void>) => {
-    setBusy(true)
+  /** Runs one action and shows any error it produces. */
+  const run = async (action: () => Promise<void>) => {
     setError(null)
     try {
       await action()
     } catch (e) {
-      setError(describe(e))
-    } finally {
-      setBusy(false)
+      setError(e instanceof Error ? e.message : 'Something went wrong')
     }
-  }, [])
+  }
 
+  // On page load: pick up the login, including coming back from the bank, and list the accounts.
   useEffect(() => {
     void run(async () => {
       const loaded = await loadUser()
+      if (!loaded) return
       setUser(loaded)
-      if (loaded) {
-        setAccounts(await api.listAccounts(loaded.access_token))
-      }
+      setAccounts(await listAccounts(loaded.access_token, logRequest))
     })
-  }, [api, run])
+  }, [])
 
-  const getToken = () =>
+  const getAccountNumber = () =>
     run(async () => {
-      if (!user || !accountId) return
-      setNetwork(await api.getPaymentNetwork(user.access_token, accountId))
+      setNetwork(await getPaymentNetwork(user!.access_token, accountId!, logRequest))
       setPayments([])
+      setVisitedBank(false)
     })
 
-  const sendPayment = () =>
+  const pay = () =>
     run(async () => {
-      if (!network) return
-      const result = await api.sendPayment(network.bankId, network.identifier, config.paymentAmount)
+      const result = await sendPayment(network!, config.paymentAmount, logRequest)
       setPayments((previous) => [...previous, result])
-      setLedger(await api.getLedger())
     })
 
   const startOver = () =>
     run(async () => {
       await forgetUser()
       setUser(null)
-      setAccounts(null)
+      setAccounts([])
       setAccountId(null)
       setNetwork(null)
       setPayments([])
       setVisitedBank(false)
-      setLog([])
+      setRequestLog([])
     })
 
   const firstPayment = payments[0]
   const laterPayments = payments.slice(1)
-  const firstPosted = firstPayment?.status === 'POSTED'
-  const myLedger = ledger.filter((entry) => payments.some((payment) => payment.paymentId === entry.paymentId))
   const amount = `$${config.paymentAmount.toFixed(2)}`
 
   return (
@@ -116,7 +87,7 @@ export function App() {
           </p>
         </div>
         {user && (
-          <button className="secondary" onClick={startOver} disabled={busy}>
+          <button className="secondary" onClick={startOver}>
             Start over
           </button>
         )}
@@ -128,7 +99,7 @@ export function App() {
         </div>
       )}
 
-      <StepCard number={1} title="Log in at the bank and consent" state={stepState(true, user !== null)}>
+      <StepCard number={1} title="Log in at the bank and consent" unlocked done={user !== null}>
         {user ? (
           <p>
             Connected as <strong>{user.profile.preferred_username}</strong>. The bank issued this aggregator an
@@ -137,20 +108,18 @@ export function App() {
         ) : (
           <>
             <p>The bank asks the customer to log in and to agree to what the aggregator may see.</p>
-            <button onClick={() => run(connectBank)} disabled={busy}>
-              Connect your bank
-            </button>
-            <p className="hint">Fake customers: alice, bob or carol. Password: password.</p>
+            <button onClick={() => run(connectBank)}>Connect your bank</button>
+            <p className="hint">Fake customer: alice. Password: password.</p>
           </>
         )}
       </StepCard>
 
-      <StepCard number={2} title="Pick an account" state={stepState(accounts !== null, accountId !== null)}>
+      <StepCard number={2} title="Pick an account" unlocked={user !== null} done={accountId !== null}>
         <p>
           From <code>GET /fdx/v6/accounts</code>. The aggregator sees a masked number only.
         </p>
         <div className="accounts">
-          {accounts?.map((account) => (
+          {accounts.map((account) => (
             <label key={account.accountId} className={account.accountId === accountId ? 'account selected' : 'account'}>
               <input
                 type="radio"
@@ -160,6 +129,7 @@ export function App() {
                   setAccountId(account.accountId)
                   setNetwork(null)
                   setPayments([])
+                  setVisitedBank(false)
                 }}
               />
               <span className="account-name">{account.nickname}</span>
@@ -171,17 +141,18 @@ export function App() {
         </div>
       </StepCard>
 
-      <StepCard number={3} title="Get payment details" state={stepState(accountId !== null, network !== null)}>
+      <StepCard number={3} title="Get the account number" unlocked={accountId !== null} done={network !== null}>
         <p>
           From <code>GET /fdx/v6/accounts/{accountId ?? '{accountId}'}/payment-networks</code>.
         </p>
-        {network ? (
+        <button onClick={getAccountNumber}>Get the account number</button>
+        {network && (
           <div className="stored">
-            <h3>What the aggregator stores</h3>
+            <h3>What the aggregator gets</h3>
             <dl>
               <dt>Routing number (bankId)</dt>
               <dd>{network.bankId}</dd>
-              <dt>Account identifier</dt>
+              <dt>Account number (identifier)</dt>
               <dd className="token">{network.identifier}</dd>
               <dt>identifierType</dt>
               <dd>{network.identifierType}</dd>
@@ -193,31 +164,20 @@ export function App() {
               customer's consent stands.
             </p>
           </div>
-        ) : (
-          <button onClick={getToken} disabled={busy}>
-            Get payment details
-          </button>
         )}
       </StepCard>
 
-      <StepCard number={4} title="Send a test payment" state={stepState(network !== null, firstPayment !== undefined)}>
+      <StepCard number={4} title="Send a test payment" unlocked={network !== null} done={firstPayment !== undefined}>
         <p>The aggregator pays {amount} to the routing number and token, the way an ACH payment is addressed.</p>
-        {firstPayment ? (
-          <PaymentOutcome result={firstPayment} />
-        ) : (
-          <button onClick={sendPayment} disabled={busy}>
-            Send {amount}
-          </button>
-        )}
-        {myLedger.length > 0 && (
-          <p className="hint">
-            Bank ledger: {myLedger.length} payment{myLedger.length === 1 ? '' : 's'} posted to this account, total $
-            {myLedger.reduce((sum, entry) => sum + entry.amount, 0).toFixed(2)}.
-          </p>
-        )}
+        {firstPayment ? <PaymentOutcome result={firstPayment} /> : <button onClick={pay}>Send {amount}</button>}
       </StepCard>
 
-      <StepCard number={5} title="Revoke consent at the bank" state={stepState(firstPosted, visitedBank)}>
+      <StepCard
+        number={5}
+        title="Revoke consent at the bank"
+        unlocked={firstPayment?.status === 'POSTED'}
+        done={visitedBank}
+      >
         <p>
           The customer changes their mind. On the bank's page, open <strong>Mock Aggregator</strong> and choose{' '}
           <strong>Remove access</strong>.
@@ -234,17 +194,15 @@ export function App() {
         <p className="hint">The bank picks up the change within a few seconds and revokes the token.</p>
       </StepCard>
 
-      <StepCard number={6} title="Send the same payment again" state={stepState(visitedBank, laterPayments.length > 0)}>
+      <StepCard number={6} title="Send the same payment again" unlocked={visitedBank} done={laterPayments.length > 0}>
         <p>Same routing number, same token, same amount.</p>
-        <button onClick={sendPayment} disabled={busy}>
-          Send {amount} again
-        </button>
+        <button onClick={pay}>Send {amount} again</button>
         {laterPayments.map((payment) => (
           <PaymentOutcome key={payment.paymentId} result={payment} />
         ))}
       </StepCard>
 
-      <RequestLog entries={log} />
+      <RequestLog entries={requestLog} />
     </main>
   )
 }

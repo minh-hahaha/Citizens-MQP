@@ -7,5 +7,3 @@ spring:
 
 payments:
   token-service-url: ${TOKEN_SERVICE_URL:http://localhost:8083}
-  # The browser origin of the aggregator UI, allowed to call this service.
-  allowed-origin: ${ALLOWED_ORIGIN:http://localhost:5173}

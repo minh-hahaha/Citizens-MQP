@@ -20,9 +20,7 @@ export function RequestLog({ entries }: { entries: RequestLogEntry[] }) {
           {entries.map((entry, index) => (
             <tr key={index}>
               <td>
-                <code>
-                  {entry.method} {new URL(entry.url).pathname}
-                </code>
+                <code>{entry.call}</code>
               </td>
               <td className={entry.status < 400 ? 'ok' : 'bad'}>{entry.status}</td>
               <td>{entry.interactionId ? <code>{entry.interactionId}</code> : 'not an FDX call'}</td>

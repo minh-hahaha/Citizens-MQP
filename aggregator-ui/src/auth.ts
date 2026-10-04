@@ -21,7 +21,7 @@ export function connectBank(): Promise<void> {
 
 /**
  * Returns the logged-in customer, finishing the redirect back from the bank if that is
- * what this page load is. Safe to call more than once.
+ * what this page load is. The result is remembered because React calls this twice in dev.
  */
 export function loadUser(): Promise<User | null> {
   pendingLoad ??= loadUserOnce()
@@ -29,13 +29,11 @@ export function loadUser(): Promise<User | null> {
 }
 
 async function loadUserOnce(): Promise<User | null> {
-  const params = new URLSearchParams(window.location.search)
-  if (params.has('code') || params.has('error')) {
-    try {
-      return await userManager.signinCallback() ?? null
-    } finally {
-      window.history.replaceState({}, document.title, window.location.pathname)
-    }
+  const isRedirectFromBank = new URLSearchParams(window.location.search).has('code')
+  if (isRedirectFromBank) {
+    const user = await userManager.signinCallback()
+    window.history.replaceState({}, document.title, window.location.pathname)
+    return user ?? null
   }
   const user = await userManager.getUser()
   return user && !user.expired ? user : null

@@ -3,6 +3,7 @@
 name: citizens-mqp
 
 services:
+  # The token vault. Only the Token Service uses it.
   postgres:
     image: postgres:16
     environment:
@@ -20,32 +21,26 @@ services:
 
   token-service:
     build:
-      context: ..
+      context: .
       args:
         MODULE: token-service
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/vault
-      DB_USER: vault
-      DB_PASSWORD: dev-only-vault-password
-    # No host port: the Token Service has no login of its own, so it is reachable
-    # only from the other services on the Compose network.
+    ports:
+      - "8083:8083"
     depends_on:
       postgres:
         condition: service_healthy
 
   open-banking-api:
     build:
-      context: ..
+      context: .
       args:
         MODULE: open-banking-api
     environment:
       TOKEN_SERVICE_URL: http://token-service:8083
-      KEYCLOAK_ISSUER: http://localhost:8080/realms/citizens
-      KEYCLOAK_JWKS: http://keycloak:8080/realms/citizens/protocol/openid-connect/certs
       KEYCLOAK_URL: http://keycloak:8080
-      KEYCLOAK_CLIENT_SECRET: dev-only-open-banking-api-secret
-      # How often revoked consents are picked up. This is the revocation delay.
-      RECONCILE_INTERVAL_MS: 5000
+      KEYCLOAK_JWKS: http://keycloak:8080/realms/citizens/protocol/openid-connect/certs
     # No host port: the Open Banking API is reached only through the gateway.
     depends_on:
       - token-service
@@ -53,27 +48,24 @@ services:
   # Stand-in for IBM API Connect: the only public entry point to the Open Banking API.
   gateway:
     build:
-      context: ..
+      context: .
       args:
         MODULE: gateway
     environment:
       OPEN_BANKING_API_URL: http://open-banking-api:8082
-      KEYCLOAK_ISSUER: http://localhost:8080/realms/citizens
-      KEYCLOAK_JWKS: http://keycloak:8080/realms/citizens/protocol/openid-connect/certs
-      ALLOWED_ORIGIN: http://localhost:5173
     ports:
       - "8081:8081"
     depends_on:
       - open-banking-api
 
+  # Mock of the bank's ACH side: resolves a token and posts to a fake ledger.
   payment-receiver:
     build:
-      context: ..
+      context: .
       args:
         MODULE: payment-receiver
     environment:
       TOKEN_SERVICE_URL: http://token-service:8083
-      ALLOWED_ORIGIN: http://localhost:5173
     ports:
       - "8084:8084"
     depends_on:
@@ -90,19 +82,18 @@ services:
       # reaches Keycloak as http://keycloak:8080 inside the Compose network.
       KC_HOSTNAME: http://localhost:8080
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
-      KC_HEALTH_ENABLED: "true"
     volumes:
-      - ./keycloak/citizens-realm.json:/opt/keycloak/data/import/citizens-realm.json:ro
+      - ./infra/keycloak/citizens-realm.json:/opt/keycloak/data/import/citizens-realm.json:ro
     ports:
       - "8080:8080"
 
   # The mock aggregator. Open http://localhost:5173 to run the demo.
   aggregator-ui:
     build:
-      context: ../aggregator-ui
+      context: ./aggregator-ui
     ports:
       - "5173:5173"
     depends_on:
       - gateway
-      - payment-receiver
       - keycloak
+      - payment-receiver

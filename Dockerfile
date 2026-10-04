@@ -3,7 +3,7 @@ FROM maven:3.9-eclipse-temurin-21 AS build
 ARG MODULE
 WORKDIR /src
 COPY . .
-RUN --mount=type=cache,target=/root/.m2 mvn -q -B -pl ${MODULE} -am package -DskipTests
+RUN --mount=type=cache,target=/root/.m2 mvn -q -B -pl ${MODULE} -am package
 
 FROM eclipse-temurin:21-jre
 ARG MODULE

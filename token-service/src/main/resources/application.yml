@@ -13,4 +13,3 @@ spring:
 tokens:
   # Fake routing number. Passes the ABA checksum but is not a real bank.
   routing-number: "123456780"
-  ttl-days: 365
