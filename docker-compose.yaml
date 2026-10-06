@@ -1,0 +1,77 @@
+#Project name
+name: pqp-prototype-app
+
+#services is a required keyword
+services:
+  #React frontend
+  #Label for my react frontend
+  frontend:
+    #Giving my service a name to show up in the docker desktop UI
+    container_name: react-app
+    #Keyword indicating docker needs to build the image using a dockerfile
+    build:
+      context: ./frontend-ui
+      dockerfile: Dockerfile
+    #Forward traffic from localhost:3000 to port 80 where nginx is listening
+    ports:
+      - "3000:80"
+    #Create dependency chain with this at the top of the chain (image generated last)
+    depends_on:
+      - keycloak
+
+  #Again a label for my docker service called keycloak
+  keycloak:
+    container_name: keycloak
+    #Download image from quay.io (an alternative to Dockerhub)
+    image: quay.io/keycloak/keycloak:26.0
+    #Need to override default startup instructions for Keycloak with the following command
+    #Start keycloak in development mode then connect to a postgres database (see below service)
+    #jdbc is java database connection since keycloak is primarily written in Java
+    #postgres-db is the name of the service
+    #Port 5432 is the standard Postgres port
+    #Keycloak is the name of the database
+    command: start-dev --db=postgres --db-url=jdbc:postgresql://postgres-db:5432/keycloak
+    environment:
+      #Create master admin account for keycloak
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      #Postgres database username and password
+      #Since this is a prototype app this doesn't matter but it is good practice to use a .env file for sensitive usernames and passwords so it isn't committed to Git
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: password123
+    ports:
+      #Port syntax is HOST:CONTAINER
+      #Keycloak's default port is 8080
+      #Note dash syntax is a YAML thing, it just means a list of items. In this case we only have 1 item in the list but there could be more.
+      - "8080:8080"
+    depends_on:
+      - postgres-db
+
+  #Label for postgres image called postgres-db
+  postgres-db:
+    container_name: database
+    #Pulling image from dockerhub, this is an official image from Docker hence no /organization name like above with keycloak
+    #Using lightweight linux distro alpine with postgres, note keycloak uses a red hat OS already specified but postgres gives users some options so it needs to be specified in the image name
+    image: postgres:16-alpine
+    environment:
+      #Name of database
+      POSTGRES_DB: keycloak
+      #Matches the username and password given to keycloak above
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password123
+    #Used for adding persistent data to my DB so when docker container stops running I don't lose all of my data
+    #HOST_LOCATION:CONTAINER_LOCATION syntax
+    #Creating a new folder on my hard drive called pgdata and mapping it to the container folder for postgres data
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+#Need to globally define volumes so docker knows to manage the persistent data
+volumes:
+  pgdata:
+
+#Run docker compose up -d --build (only need build flag for first run and when React app is changed)
+#Run docker compose up -d keycloak postgres-db to just run those two services and not the react app (would run npm run dev separately for that)
+#-d flag starts docker in detached mode so I can use the terminal wihout it being in docker mode and filled with logs
+#Run docker compose down in root directory to turn off docker container
+#Run docker compose stop in root directory to stop the docker container (will still be in docker desktop UI)
+#Can also press Control + C to stop docker container
