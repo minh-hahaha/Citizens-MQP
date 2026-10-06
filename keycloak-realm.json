@@ -54,7 +54,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "alice",
+          "value": "password",
           "temporary": false
         }
       ]
