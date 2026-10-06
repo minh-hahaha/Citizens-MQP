@@ -30,7 +30,9 @@ services:
     #postgres-db is the name of the service
     #Port 5432 is the standard Postgres port
     #Keycloak is the name of the database
-    command: start-dev --db=postgres --db-url=jdbc:postgresql://postgres-db:5432/keycloak
+    #Import realm is used for creating a realm which is a bit of keycloak terminology but basically it encompasses users and clients
+    #So now docker container by default will have an alice user and a react client setup
+    command: start-dev --db=postgres --db-url=jdbc:postgresql://postgres-db:5432/keycloak --import-realm
     environment:
       #Create master admin account for keycloak
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
@@ -44,6 +46,8 @@ services:
       #Keycloak's default port is 8080
       #Note dash syntax is a YAML thing, it just means a list of items. In this case we only have 1 item in the list but there could be more.
       - "8080:8080"
+    volumes:
+      - ./keycloak-realm.json:/opt/keycloak/data/import/keycloak-realm.json
     depends_on:
       - postgres-db
 
