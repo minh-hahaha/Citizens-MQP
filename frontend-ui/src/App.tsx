@@ -15,7 +15,11 @@ function App() {
   const [user, setUser] = useState<User | null>(null)
   const isInitializing = useRef(false);
 
+  const [visitedBank, setVisitedBank] = useState(false)
+
   useEffect(() => {
+    if (isInitializing.current) return
+    isInitializing.current = true
     keycloak.init({
       onLoad:"check-sso",
       pkceMethod:"S256"
@@ -81,7 +85,21 @@ function App() {
           </>
         )}
       </StepCard>
-      <button onClick={() => keycloak.logout()}>Log out</button>
+      <StepCard
+        number={5}
+        title="Revoke consent at the bank"
+        unlocked={user != null}
+        done={visitedBank}
+      >
+        <p>
+          The customer changes their mind. On the bank's page, open <strong>Mock Aggregator</strong> and choose{' '}
+          <strong>Remove access</strong>.
+        </p>
+        <a className="button secondary" href="http://localhost:8080/realms/prototype-app/account/applications" target="_blank" rel="noreferrer" onClick={() => setVisitedBank(true)}>
+          Open application's page
+        </a>
+        <p className="hint">The bank picks up the change within a few seconds and revokes the token.</p>
+      </StepCard>
 
     </main>
   )

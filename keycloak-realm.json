@@ -3,9 +3,17 @@
   "enabled": true,
   "registrationAllowed": false,
   "resetPasswordAllowed": false,
+  "defaultDefaultClientScopes": [
+    "basic",
+    "profile",
+    "roles",
+    "web-origins",
+    "acr",
+    "email"
+  ],
   "requiredActions": [
     {
-      "alias":"UPDATE_PROFILE",
+      "alias": "UPDATE_PROFILE",
       "name": "Update Profile",
       "providerId": "UPDATE_PROFILE",
       "enabled": false,
@@ -29,11 +37,194 @@
       "priority": 90
     }
   ],
+  "clientScopes": [
+    {
+      "name": "basic",
+      "description": "OpenID Connect scope for add all basic claims to the token",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "profile",
+      "description": "User profile",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "roles",
+      "description": "User roles",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "client roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "true",
+            "claim.name": "resource_access.${client_id}.roles",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "audience resolve",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-resolve-mapper",
+          "config": {
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "web-origins",
+      "description": "Allowed web origins",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "allowed web origins",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-allowed-origins-mapper",
+          "config": {
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "acr",
+      "description": "Authentication context class reference",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "email",
+      "description": "Email address",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "fdx:accountbasic:read",
+      "description": "Account identifying information (name, type, masked number)",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true",
+        "consent.screen.text": "Account identifying information (name, type, masked number)"
+      }
+    },
+    {
+      "name": "fdx:paymentsupport:read",
+      "description": "Account numbers for payments (shared as a token, not your real account number)",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true",
+        "consent.screen.text": "Account numbers for payments (shared as a token, not your real account number)"
+      }
+    }
+  ],
   "clients": [
     {
-      "clientId": "react-app",
+      "clientId": "account",
+      "name": "${client_account}",
+      "rootUrl": "${authBaseUrl}",
+      "baseUrl": "/realms/prototype-app/account/",
+      "enabled": true,
+      "alwaysDisplayInConsole": false,
+      "bearerOnly": false,
+      "consentRequired": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "publicClient": false,
+      "frontchannelLogout": false,
+      "protocol": "openid-connect",
+      "defaultClientScopes": [
+        "web-origins",
+        "roles",
+        "profile",
+        "basic",
+        "acr",
+        "email"
+      ]
+    },
+    {
+      "clientId": "account-console",
+      "name": "${client_account-console}",
+      "rootUrl": "${authBaseUrl}",
+      "baseUrl": "/realms/prototype-app/account/",
       "enabled": true,
       "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "/realms/prototype-app/account/*"
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "roles",
+        "profile",
+        "basic",
+        "acr",
+        "email"
+      ]
+    },
+    {
+      "clientId": "MockAggregator",
+      "description": "Stand-in for a data aggregator such as Plaid",
+      "enabled": true,
+      "publicClient": true,
+      "consentRequired": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "redirectUris": [
@@ -43,6 +234,16 @@
       "webOrigins": [
         "http://localhost:3000",
         "http://localhost:5173"
+      ],
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "roles",
+        "web-origins",
+        "acr",
+        "email",
+        "fdx:accountbasic:read",
+        "fdx:paymentsupport:read"
       ]
     }
   ],
@@ -57,7 +258,15 @@
           "value": "password",
           "temporary": false
         }
-      ]
+      ],
+      "clientRoles": {
+        "account": [
+          "manage-account",
+          "view-profile",
+          "manage-consent",
+          "view-consent"
+        ]
+      }
     }
   ]
 }
