@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import keycloak from './keycloak'
 import {StepCard} from './StepCard.tsx'
+import { Tooltip } from 'react-tooltip'
 
 // The gateway is the only address the aggregator knows for the bank's API
 const GATEWAY_URL = 'http://localhost:8081'
@@ -115,11 +116,12 @@ function App() {
     <main className="page">
       <header className="page-header">
         <div>
-          <h1>The Flow of Tokenized Account Numbers</h1>
+          <h1>The Flow of Tokenized Account Numbers <span className="tooltip-trigger-circle" data-tooltip-id="react-tooltip" data-tooltip-content="We used React as our front-end framework paired with Typescript">?</span></h1>
           <p>
             A prototype app meant to help us learn the tech stack and demonstrate the flow of a tokenized accoutn number. It links a bank account and only ever receives a token, never the
             account number. All data is fake.
           </p>
+          <Tooltip id="react-tooltip"></Tooltip>
         </div>
         {user && (
           <button className="secondary" onClick={startOver}>
@@ -136,7 +138,7 @@ function App() {
         </div>
       )}
 
-      <StepCard number={1} title="Log in at the bank and consent" unlocked done={user !== null}>
+      <StepCard number={1} title="Log in at the bank and consent" tooltip="We used Keycloak as our identity access management software" unlocked done={user !== null}>
         {user ? (
           <p>
             Connected as <strong>{user.preferred_username}</strong>. The bank issued this aggregator an
@@ -150,7 +152,7 @@ function App() {
           </>
         )}
       </StepCard>
-      <StepCard number={2} title="List the accounts" unlocked={user !== null} done={accounts.length > 0}>
+      <StepCard number={2} title="List the accounts" tooltip="We used Spring Cloud Gateway to restrict access to the API calls" unlocked={user !== null} done={accounts.length > 0}>
         <p>
           <code>GET /fdx/v6/accounts</code>. The aggregator sees masked numbers only.
         </p>
@@ -164,7 +166,7 @@ function App() {
         </div>
       </StepCard>
 
-      <StepCard number={3} title="Get the account number" unlocked={accounts.length > 0} done={linked !== null}>
+      <StepCard number={3} title="Get the account number" tooltip="We used the FDX API specification in designing our API calls" unlocked={accounts.length > 0} done={linked !== null}>
         <p>
           <code>GET /fdx/v6/accounts/&#123;accountId&#125;/payment-networks</code>. Pick an account:
         </p>
@@ -194,6 +196,7 @@ function App() {
       <StepCard
         number={4}
         title="Revoke consent at the bank"
+        tooltip="Keycloak was a substitute for the IAM software Citizens uses called Ping Identity"
         unlocked={linked !== null}
         done={visitedBank}
       >
@@ -207,7 +210,7 @@ function App() {
         <p className="hint">The bank notices on the aggregator's next call and revokes the token then.</p>
       </StepCard>
 
-      <StepCard number={5} title="Ask for the account number again" unlocked={visitedBank} done={retryResult !== null}>
+      <StepCard number={5} title="Ask for the account number again" tooltip="We used Docker to package everything together into 1 software container" unlocked={visitedBank} done={retryResult !== null}>
         <p>Same call as step 3, with the same access token.</p>
         <button onClick={tryAgain}>Try again</button>
         {retryResult && <p>{retryResult}</p>}
