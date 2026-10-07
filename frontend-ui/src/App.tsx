@@ -118,7 +118,7 @@ function App() {
         <div>
           <h1>The Flow of Tokenized Account Numbers <span className="tooltip-trigger-circle" data-tooltip-id="react-tooltip" data-tooltip-content="We used React as our front-end framework paired with Typescript">?</span></h1>
           <p>
-            A prototype app meant to help us learn the tech stack and demonstrate the flow of a tokenized accoutn number. It links a bank account and only ever receives a token, never the
+            A prototype app meant to help us learn the tech stack and demonstrate the flow of a tokenized account number. It links a bank account and only ever receives a token, never the
             account number. All data is fake.
           </p>
           <Tooltip id="react-tooltip"></Tooltip>
