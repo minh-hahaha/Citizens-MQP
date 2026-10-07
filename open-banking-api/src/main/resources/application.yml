@@ -1,0 +1,11 @@
+server:
+  port: 8082
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Where to fetch Keycloak's public keys, used to check the access token's signature.
+          # With this set, every request without a valid access token gets HTTP 401.
+          jwk-set-uri: ${KEYCLOAK_URL:http://localhost:8080}/realms/prototype-app/protocol/openid-connect/certs

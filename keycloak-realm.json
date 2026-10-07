@@ -1,6 +1,8 @@
 {
   "realm": "prototype-app",
   "enabled": true,
+  "accessTokenLifespan": 1800,
+  "sslRequired": "none",
   "registrationAllowed": false,
   "resetPasswordAllowed": false,
   "defaultDefaultClientScopes": [
@@ -245,9 +247,28 @@
         "fdx:accountbasic:read",
         "fdx:paymentsupport:read"
       ]
+    },
+    {
+      "clientId": "open-banking-api",
+      "description": "Lets the Open Banking API ask which consents still exist",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "dev-only-secret",
+      "standardFlowEnabled": false,
+      "serviceAccountsEnabled": true
     }
   ],
   "users": [
+    {
+      "username": "service-account-open-banking-api",
+      "enabled": true,
+      "serviceAccountClientId": "open-banking-api",
+      "clientRoles": {
+        "realm-management": [
+          "view-users"
+        ]
+      }
+    },
     {
       "username": "alice",
       "enabled": true,

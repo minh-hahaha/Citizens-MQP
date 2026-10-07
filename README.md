@@ -7,9 +7,7 @@ Would also need to do cd into frontend-ui directory and do `npm run dev` to get 
 
 When changing keycloak realm JSON file, do `docker compose down -v` to reset persistent data so that realm will be rebuilt
 
+Look inside the token vault with `curl http://localhost:8083/tokens/<token>`
+
 # To Do
-- Token service
-- API Gateway
-- API GET call for account list for Alice
-- Add StepCards for showing accounts list twice (once before revoking and once after revoking)
 - Add tooltips indicating tech stack info
